@@ -32,10 +32,6 @@ const portTickType xPeriod2 = 10000;
 
 void vTaskBody1(void *pvParameters)
 {
-    // structure to store time retrieved from Linux kernel
-    /* static struct timespec the_time; */
-    /* static char our_time_string[100]; */
-    /* static int our_time_strings_width = 0; */
     portTickType xLastWakeTime;
     while (1) {
         xLastWakeTime = xTaskGetTickCount();
@@ -48,10 +44,6 @@ void vTaskBody1(void *pvParameters)
 
 void vTaskBody2(void *pvParameters)
 {
-    // structure to store time retrieved from Linux kernel
-    /* static struct timespec the_time; */
-    /* static char our_time_string[100]; */
-    /* static int our_time_strings_width = 0; */
     portTickType xLastWakeTime;
     while (1) {
         xLastWakeTime = xTaskGetTickCount();
@@ -59,7 +51,7 @@ void vTaskBody2(void *pvParameters)
         /* vTaskDelay((TickType_t)1000); */
         printf("test 2\n");
         /* tumFUtilPrintTaskStateList(); */
-        tumFUtilPrintTaskUtils();
+        /* tumFUtilPrintTaskUtils(); */
         vTaskDelayUntil(&xLastWakeTime, xPeriod2);
     }
 }
