@@ -442,6 +442,21 @@ void vListInsertEnd(List_t *const pxList, ListItem_t *const pxNewListItem) PRIVI
  */
 UBaseType_t uxListRemove(ListItem_t *const pxItemToRemove) PRIVILEGED_FUNCTION;
 
+/* KHCHEN: the following functions are prepared for Bucket of Ignorance for timers */
+
+/* 
+ * A wrapper function to decide if the item is inserted into bucket or list.
+ * We can simply use vListInsertEnd to insert without precise positions to simulate bucket.
+ * To use this function, $m$ + 1 lists are required, i.e., m = max(1, ceil(log_2(n))-1).
+ */
+void vTimerInsert(List_t *const pxList, List_t *const pxBucket, ListItem_t *const pxNewListItem) PRIVILEGED_FUNCTION;
+
+/* Function for refilling List(s) */
+void vTimerRefill(List_t *const pxList, List_t *const pxBucket) PRIVILEGED_FUNCTION;
+
+/* Function for sorting items in Bucket */
+void vSortBucket(List_t *const pxBucket) PRIVILEGED_FUNCTION;
+
 #ifdef __cplusplus
 }
 #endif
