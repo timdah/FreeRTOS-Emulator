@@ -22,13 +22,16 @@
 
 #define mainGENERIC_PRIORITY (tskIDLE_PRIORITY)
 #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
-#define mainTask1_PRIORITY (2)
-#define mainTask2_PRIORITY (1)
+#define mainTask1_PRIORITY (3)
+#define mainTask2_PRIORITY (2)
+#define mainTask3_PRIORITY (1)
 
 static TaskHandle_t Task1 = NULL;
 static TaskHandle_t Task2 = NULL;
+static TaskHandle_t Task3 = NULL;
 const portTickType xPeriod1 = 1000;
-const portTickType xPeriod2 = 10000;
+const portTickType xPeriod2 = 5000;
+const portTickType xPeriod3 = 10000;
 
 void vTaskBody1(void *pvParameters)
 {
@@ -56,13 +59,28 @@ void vTaskBody2(void *pvParameters)
     }
 }
 
+void vTaskBody3(void *pvParameters)
+{
+    portTickType xLastWakeTime;
+    while (1) {
+        xLastWakeTime = xTaskGetTickCount();
+        // Basic sleep of 1000 milliseconds
+        /* vTaskDelay((TickType_t)1000); */
+        printf("Task 3\n");
+        /* tumFUtilPrintTaskStateList(); */
+        /* tumFUtilPrintTaskUtils(); */
+        vTaskDelayUntil(&xLastWakeTime, xPeriod3);
+    }
+}
+
 int main(int argc, char *argv[])
 {
     xTaskCreate(vTaskBody1, "Task1", mainGENERIC_STACK_SIZE * 2, NULL,
                     mainTask1_PRIORITY, &Task1); 
     xTaskCreate(vTaskBody2, "Task2", mainGENERIC_STACK_SIZE * 2, NULL,
                     mainTask2_PRIORITY, &Task2); 
-
+    xTaskCreate(vTaskBody3, "Task3", mainGENERIC_STACK_SIZE * 2, NULL,
+                    mainTask3_PRIORITY, &Task3); 
     vTaskStartScheduler();
 
     return EXIT_SUCCESS;

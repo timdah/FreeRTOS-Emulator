@@ -187,7 +187,7 @@ struct xLIST_ITEM {
     void *configLIST_VOLATILE pvContainer;              /*< Pointer to the list in which this list item is placed (if any). */
     listSECOND_LIST_ITEM_INTEGRITY_CHECK_VALUE          /*< Set to a known value if configUSE_LIST_DATA_INTEGRITY_CHECK_BYTES is set to 1. */
 };
-typedef struct xLIST_ITEM ListItem_t;                   /* For some reason lint wants this as two separate definitions. */
+typedef struct xLIST_ITEM ListItem_t;                   /* For some reason list wants this as two separate definitions. */
 
 struct xMINI_LIST_ITEM {
     listFIRST_LIST_ITEM_INTEGRITY_CHECK_VALUE           /*< Set to a known value if configUSE_LIST_DATA_INTEGRITY_CHECK_BYTES is set to 1. */
@@ -263,7 +263,7 @@ typedef struct xLIST {
 #define listGET_HEAD_ENTRY( pxList )    ( ( ( pxList )->xListEnd ).pxNext )
 
 /*
- * Return the list item at the head of the list.
+ * Return the next item of the item.
  *
  * \page listGET_NEXT listGET_NEXT
  * \ingroup LinkedList
@@ -456,6 +456,13 @@ void vTimerRefill(List_t *const pxList, List_t *const pxBucket) PRIVILEGED_FUNCT
 
 /* Function for sorting items in Bucket */
 void vSortBucket(List_t *const pxBucket) PRIVILEGED_FUNCTION;
+
+/* Function for sorting items in Bucket */
+ListItem_t* vSortedMerge(ListItem_t *a, ListItem_t *b) PRIVILEGED_FUNCTION;
+
+/* Function for sorting items in Bucket */
+void vFrontBackSplit(ListItem_t *const pxSourceItem, ListItem_t **pxFrontRef, ListItem_t **pxBackRef) PRIVILEGED_FUNCTION;
+
 
 #ifdef __cplusplus
 }
