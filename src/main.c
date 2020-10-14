@@ -37,7 +37,7 @@ void vTaskBody1(void *pvParameters)
         xLastWakeTime = xTaskGetTickCount();
         // Basic sleep of 1000 milliseconds
         /* vTaskDelay((TickType_t)1000); */
-        printf("test 1\n");
+        printf("Task 1\n");
         vTaskDelayUntil(&xLastWakeTime, xPeriod1);
     }
 }
@@ -49,7 +49,7 @@ void vTaskBody2(void *pvParameters)
         xLastWakeTime = xTaskGetTickCount();
         // Basic sleep of 1000 milliseconds
         /* vTaskDelay((TickType_t)1000); */
-        printf("test 2\n");
+        printf("Task 2\n");
         /* tumFUtilPrintTaskStateList(); */
         /* tumFUtilPrintTaskUtils(); */
         vTaskDelayUntil(&xLastWakeTime, xPeriod2);

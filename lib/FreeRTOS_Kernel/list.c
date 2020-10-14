@@ -236,32 +236,26 @@ UBaseType_t uxListRemove(ListItem_t *const pxItemToRemove)
 void vTimerInsert(List_t *const pxList, List_t *const pxBucket, ListItem_t *const pxNewListItem)
 {
     TickType_t xNextExpireTime;
-
     /* If the bucket is empty, fill it to let the following procedure work */
     if ( listLIST_IS_EMPTY( pxBucket ) != pdFALSE ) {
         vListInsertEnd(pxBucket, pxNewListItem);
-        pxNewListItem->pvContainer = (void *) pxBucket;
-        (pxBucket->uxNumberOfItems)++;
     }
-    xNextExpireTime = listGET_ITEM_VALUE_OF_HEAD_ENTRY(pxBucket);
-
-    /* Depending on e_i decides if timer should insert to list or append to bucket */
-    if ( pxNewListItem->xItemValue < xNextExpireTime ) {
-        vListInsert(pxList, pxNewListItem);
-        /* Remember which list the item is in.  This allows fast removal of the
-        item later. */
-        pxNewListItem->pvContainer = (void *) pxList;
-        (pxList->uxNumberOfItems)++;
-    } 
     else {
-        /* simply append timer to bucket*/
-        vListInsertEnd(pxBucket, pxNewListItem);
-        pxNewListItem->pvContainer = (void *) pxBucket;
-        (pxBucket->uxNumberOfItems)++;
-        if ( listLIST_IS_EMPTY( pxList ) != pdFALSE )
-            vTimerRefill(pxList, pxBucket);
-    }
+        xNextExpireTime = listGET_ITEM_VALUE_OF_HEAD_ENTRY(pxBucket);
+        /* printf("Expire Time in Bucket %ld\n", xNextExpireTime); */
 
+        /* Depending on e_i decides if timer should insert to list or append to bucket */
+        if ( listGET_LIST_ITEM_VALUE(pxNewListItem) < xNextExpireTime ) {
+            vListInsert(pxList, pxNewListItem);
+            /* printf("directly add?\n"); */
+        } 
+        else {
+            /* simply append timer to bucket*/
+            vListInsertEnd(pxBucket, pxNewListItem);
+            if ( listLIST_IS_EMPTY( pxList ) != pdFALSE )
+                vTimerRefill(pxList, pxBucket);
+        }
+    }
 }
 /*-----------------------------------------------------------*/
 
@@ -278,25 +272,22 @@ void vTimerRefill(List_t *const pxList, List_t *const pxBucket)
 
     ListItem_t *pxTimerItem;
 
+    /* printf("%ld\n", (pxBucket->uxNumberOfItems)/2); */
     /* fill the first s items into list */
-    for (int i = 0; i < pxBucket->uxNumberOfItems/2; i++){
-        pxTimerItem = listGET_HEAD_ENTRY(pxList);
+    for (int i = 0; i < (pxBucket->uxNumberOfItems)/2; i++){
+        pxTimerItem = listGET_HEAD_ENTRY(pxBucket);
         (void) uxListRemove(pxTimerItem);
         vListInsert(pxList, (ListItem_t *) pxTimerItem);
-        pxTimerItem->pvContainer = (void *) pxList;
-        (pxList->uxNumberOfItems)++;
         e_min = pxTimerItem->xItemValue;
     }
 
     /* if there are timers with the same periods */
-    while( listLIST_IS_EMPTY( pxBucket ) == pdFALSE ){
+    while( listLIST_IS_EMPTY( pxBucket ) == pdFALSE ){        
         xNextExpireTime = listGET_ITEM_VALUE_OF_HEAD_ENTRY(pxBucket);
         if( xNextExpireTime == e_min ){
-            pxTimerItem = listGET_HEAD_ENTRY(pxList);
+            pxTimerItem = listGET_HEAD_ENTRY(pxBucket);
             (void) uxListRemove(pxTimerItem);
             vListInsert(pxList, (ListItem_t *) pxTimerItem);
-            pxTimerItem->pvContainer = (void *) pxList;
-            (pxList->uxNumberOfItems)++;
         }
         else
             break;

@@ -162,7 +162,6 @@ timer service task is allowed to access these lists. */
 PRIVILEGED_DATA static List_t xActiveTimerList1;
 PRIVILEGED_DATA static List_t xActiveTimerList2;
 
-/* KHCHEN: I suppose these two lists are not used if the mechanism is fully revised */
 PRIVILEGED_DATA static List_t *pxCurrentTimerList;
 PRIVILEGED_DATA static List_t *pxOverflowTimerList;
 
@@ -173,8 +172,8 @@ PRIVILEGED_DATA static List_t *pxOverflowTimerList;
  * To comply the overflow mechanism in FreeRTOS, the number of created lists should be double.
  * At first, the simplest BOI is implemented.
  */
-PRIVILEGED_DATA static List_t *pxCurrentTimerBucket;
-PRIVILEGED_DATA static List_t *pxOverflowTimerBucket;
+/* PRIVILEGED_DATA static List_t *pxCurrentTimerBucket; */
+/* PRIVILEGED_DATA static List_t *pxOverflowTimerBucket; */
 
 /* A queue that is used to send commands to the timer service task. */
 PRIVILEGED_DATA static QueueHandle_t xTimerQueue = NULL;
@@ -676,7 +675,7 @@ static BaseType_t prvInsertTimerInActiveList(Timer_t *const pxTimer, const TickT
             xProcessTimerNow = pdTRUE;
         }
         else {
-            vTimerInsert(pxOverflowTimerList, pxOverflowTimerBucket, &(pxTimer->xTimerListItem));
+            vListInsert(pxOverflowTimerList, &(pxTimer->xTimerListItem));
         }
     }
     else {
@@ -687,7 +686,7 @@ static BaseType_t prvInsertTimerInActiveList(Timer_t *const pxTimer, const TickT
             xProcessTimerNow = pdTRUE;
         }
         else {
-            vTimerInsert(pxCurrentTimerList, pxCurrentTimerBucket, &(pxTimer->xTimerListItem));
+            vListInsert(pxCurrentTimerList, &(pxTimer->xTimerListItem));
         }
     }
 
