@@ -241,6 +241,7 @@ void vTimerInsert(List_t *const pxList, List_t *const pxBucket, ListItem_t *cons
         vListInsertEnd(pxBucket, pxNewListItem);
     }
     else {
+        /* Here assume that the bucket is sorted once or there is only one item in the bucket */
         xNextExpireTime = listGET_ITEM_VALUE_OF_HEAD_ENTRY(pxBucket);
 
         /* Depending on e_i decides if timer should insert to list or append to bucket */
@@ -252,6 +253,16 @@ void vTimerInsert(List_t *const pxList, List_t *const pxBucket, ListItem_t *cons
             vListInsertEnd(pxBucket, pxNewListItem);
             if ( listLIST_IS_EMPTY( pxList ) != pdFALSE )
                 vTimerRefill(pxList, pxBucket);
+            printf("After refilling:\n");
+            ListItem_t *pxTimerItem;
+            pxTimerItem = listGET_HEAD_ENTRY(pxList);
+            UBaseType_t i = pxList->uxNumberOfItems;
+            while (i != 0){
+                printf("item: %d\n", pxTimerItem->xItemValue);
+                pxTimerItem = pxTimerItem->pxNext; 
+                i--;
+            }
+            printf("\n");
         }
     }
 }
@@ -266,7 +277,7 @@ void vTimerRefill(List_t *const pxList, List_t *const pxBucket)
     vSortBucket ( pxBucket );
 
     TickType_t xNextExpireTime;
-    TickType_t e_min;
+    TickType_t e_tail = 0;
 
     ListItem_t *pxTimerItem;
 
@@ -275,13 +286,13 @@ void vTimerRefill(List_t *const pxList, List_t *const pxBucket)
         pxTimerItem = listGET_HEAD_ENTRY(pxBucket);
         (void) uxListRemove(pxTimerItem);
         vListInsert(pxList, (ListItem_t *) pxTimerItem);
-        e_min = pxTimerItem->xItemValue;
     }
+    e_tail = pxTimerItem->xItemValue;
 
     /* if there are timers with the same periods */
     while( listLIST_IS_EMPTY( pxBucket ) == pdFALSE ){        
         xNextExpireTime = listGET_ITEM_VALUE_OF_HEAD_ENTRY(pxBucket);
-        if( xNextExpireTime == e_min ){
+        if( xNextExpireTime == e_tail){
             pxTimerItem = listGET_HEAD_ENTRY(pxBucket);
             (void) uxListRemove(pxTimerItem);
             vListInsert(pxList, (ListItem_t *) pxTimerItem);
@@ -295,11 +306,21 @@ void vTimerRefill(List_t *const pxList, List_t *const pxBucket)
 void vSortBucket(List_t *const pxBucket)
 {
     ListItem_t *pxTimerItem;
+    printf("Before Sorting:\n");
+    pxTimerItem = listGET_HEAD_ENTRY(pxBucket);
+    UBaseType_t i = pxBucket->uxNumberOfItems;
+    while (i != 0){
+        printf("item: %d\n", pxTimerItem->xItemValue);
+        pxTimerItem = pxTimerItem->pxNext; 
+        i--;
+    }
+
+#if 0
+    /* Kind of Insertion Sort */
     List_t pxTemp;
     vListInitialise(&pxTemp);
     List_t *pxTempRef = &pxTemp;
-
-    /* Insertion Sort */
+    
     while (listLIST_IS_EMPTY(pxBucket) == pdFALSE) {
         pxTimerItem = listGET_HEAD_ENTRY(pxBucket);
         (void) uxListRemove(pxTimerItem);
@@ -310,65 +331,89 @@ void vSortBucket(List_t *const pxBucket)
         (void) uxListRemove(pxTimerItem);
         vListInsert(pxBucket, (ListItem_t *) pxTimerItem);
     }
-  
-    /* // merge-sort */
-    /* ListItem_t *head = pxHeadItem; */
-    /* ListItem_t *a; */
-    /* ListItem_t *b; */
-    /* /1* Base case: length 0 or 1 *1/ */
-    /* if ( pxHeadItem == NULL || pxHeadItem->pxNext == NULL ) */
-    /*     return; */
-    /* printf("Are we here1?\n"); */
-    /* /1* Split head into 'a' and 'b' sublists *1/ */
-    /* vFrontBackSplit(head, &a, &b); */
+#else
+    /* Merge Sort */
 
-    /* /1* Recursively sort the sublists *1/ */
-    /* vSortBucket(a); */
-    /* vSortBucket(b); */
+    vMergeSort( &listGET_HEAD_ENTRY(pxBucket), pxBucket->pxIndex);
+    /* pxTimerItem = listGET_HEAD_ENTRY(pxBucket); */
+    /* UBaseType_t i = pxBucket->uxNumberOfItems; */
+    /* while (i != 0){ */
+    /*     printf("item in Bucket: %d\n", pxTimerItem->xItemValue); */
+    /*     pxTimerItem = pxTimerItem->pxNext; */ 
+    /*     i--; */
+    /* } */
+    /* printf("Finish\n"); */
+#endif
+}
+/*-----------------------------------------------------------*/
 
-    /* /1* Merge the two sorted lists together *1/ */
-    /* pxHeadItem = vSortedMerge(a, b); */
-    /* printf("Are we here2?\n"); */
+void vMergeSort(ListItem_t ** pxHeadItem, ListItem_t *const pxIndex) {
+    ListItem_t *head = *pxHeadItem;
+    ListItem_t *a;
+    ListItem_t *b;
+    /* Base case: length 0 or 1 */
+    if ( head == pxIndex || head->pxNext == pxIndex )
+        return;
+
+    /* Split head into 'a' and 'b' sublists */
+    vFrontBackSplit(head, &a, &b, pxIndex);
+
+    /* Recursively sort the sublists */
+    /* vMergeSort(&a, pxIndex); */
+    /* vMergeSort(&b, pxIndex); */ 
+
+    /* Merge the two sorted lists together */
+    *pxHeadItem = vSortedMerge(a, b, pxIndex);
+
+    ListItem_t *pxTimerItem = pxHeadItem;
+    while (pxTimerItem != pxIndex){
+        printf("item after merge: %d\n", pxTimerItem->xItemValue);
+        pxTimerItem = pxTimerItem->pxNext; 
+    }
+    printf("Finish\n");
 
 }
 /*-----------------------------------------------------------*/
 
-ListItem_t* vSortedMerge(ListItem_t *a, ListItem_t *b)
+ListItem_t* vSortedMerge(ListItem_t *a, ListItem_t *b, ListItem_t *const pxIndex)
 {
     /* merge the two sorted lists together */
-    /* previous links should be fixed somehow later on */
-    ListItem_t *result = NULL;
+    /* backward links should be fixed later on */
+    ListItem_t *result = pxIndex;
 
     /* Base cases */
-    if (a == NULL)
+    if (a == pxIndex){
         return (b);
-    else if (b == NULL)
+    }
+    else if (b == pxIndex){
         return (a);
+    }
 
     /* Pick either a or b, and recur */
     if(a->xItemValue <= b->xItemValue){
         result = a;
-        result->pxNext = vSortedMerge(a->pxNext, b);
+        result->pxNext = vSortedMerge(a->pxNext, b, pxIndex);
     }else{
         result = b;
-        result->pxNext = vSortedMerge(a, b->pxNext);
+        result->pxNext = vSortedMerge(a, b->pxNext, pxIndex);
     }
+
     return(result);
 }
 /*-----------------------------------------------------------*/
 
-void vFrontBackSplit(ListItem_t *const pxSourceItem, ListItem_t **pxFrontRef, ListItem_t **pxBackRef)
+void vFrontBackSplit(ListItem_t *const pxSourceItem, ListItem_t **pxFrontRef, ListItem_t **pxBackRef, ListItem_t *const pxIndex)
 {
     /* utility function */
     ListItem_t *pxFast;  
     ListItem_t *pxSlow;  
     pxSlow = pxSourceItem;
     pxFast = pxSourceItem->pxNext;
-
+    
     /* Advance 'fast' two nodes, and advance 'slow' one node */
-    while(pxFast->xItemValue != portMAX_DELAY){
+    while(pxFast != pxIndex){
         pxFast = pxFast->pxNext;
-        if(pxFast != NULL){
+        if(pxFast != pxIndex){
             pxSlow = pxSlow->pxNext;
             pxFast = pxFast->pxNext;
         }
@@ -376,6 +421,6 @@ void vFrontBackSplit(ListItem_t *const pxSourceItem, ListItem_t **pxFrontRef, Li
     /* 'slow' is before the midpoint in the list, so split it in two at that point */
     *pxFrontRef = pxSourceItem;
     *pxBackRef = pxSlow->pxNext;
-    pxSlow->pxNext->xItemValue= portMAX_DELAY;
+    pxSlow->pxNext = pxIndex;
 }
 /*-----------------------------------------------------------*/

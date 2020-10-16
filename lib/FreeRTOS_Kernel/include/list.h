@@ -457,11 +457,14 @@ void vTimerRefill(List_t *const pxList, List_t *const pxBucket) PRIVILEGED_FUNCT
 /* Function for sorting items in Bucket */
 void vSortBucket(List_t *const pxBucket) PRIVILEGED_FUNCTION;
 
-/* Function for sorting items in Bucket */
-ListItem_t* vSortedMerge(ListItem_t *a, ListItem_t *b) PRIVILEGED_FUNCTION;
+/* Function for merge-sort */
+void vMergeSort(ListItem_t **const pxHeadItem, ListItem_t *const pxIndex) PRIVILEGED_FUNCTION;
 
 /* Function for sorting items in Bucket */
-void vFrontBackSplit(ListItem_t *const pxSourceItem, ListItem_t **pxFrontRef, ListItem_t **pxBackRef) PRIVILEGED_FUNCTION;
+ListItem_t* vSortedMerge(ListItem_t *a, ListItem_t *b, ListItem_t *const pxIndex) PRIVILEGED_FUNCTION;
+
+/* Function for sorting items in Bucket */
+void vFrontBackSplit(ListItem_t *const pxSourceItem, ListItem_t **pxFrontRef, ListItem_t **pxBackRef, ListItem_t *const pxIndex) PRIVILEGED_FUNCTION;
 
 
 #ifdef __cplusplus
