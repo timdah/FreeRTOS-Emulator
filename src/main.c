@@ -37,8 +37,12 @@ const portTickType xPeriodInputStopWatch = 100;
 const portTickType xPeriodUpdateStopWatch = 10;
 
 unsigned long time_in_ms = 0; // stop watch time in ms
-uint64_t time_interval = 0;
+uint64_t last_time = 0; // last time for measurement task
 
+/**
+ * Displaying stopwatch task
+ * @param pvParameters
+ */
 _Noreturn void vDisplayStopWatch(void *pvParameters)
 {
     portTickType xLastWakeTime;
@@ -49,6 +53,10 @@ _Noreturn void vDisplayStopWatch(void *pvParameters)
     }
 }
 
+/**
+ * Handling user input task
+ * @param pvParameters
+ */
 _Noreturn void vInputStopWatch(void *pvParameters)
 {
     portTickType xLastWakeTime;
@@ -77,7 +85,7 @@ _Noreturn void vInputStopWatch(void *pvParameters)
         {
             case 'r':
             {
-                time_interval = xTaskGetTickCount();
+                last_time = xTaskGetTickCount();
                 vTaskResume(TaskDisplayStopWatch); 
                 vTaskResume(TaskUpdateStopWatch);
                 printf("\n");
@@ -104,14 +112,18 @@ _Noreturn void vInputStopWatch(void *pvParameters)
     }
 }
 
+/**
+ * Time measurement task
+ * @param pvParameters
+ */
 _Noreturn void vUpdateStopWatch(void *pvParameters)
 {
     portTickType xLastWakeTime;
-    time_interval = xTaskGetTickCount();
+    last_time = xTaskGetTickCount();
     while (1) {
         xLastWakeTime = xTaskGetTickCount();
-        time_in_ms += xTaskGetTickCount() - time_interval;
-        time_interval = xTaskGetTickCount();
+        time_in_ms += xTaskGetTickCount() - last_time;
+        last_time = xTaskGetTickCount();
         vTaskDelayUntil(&xLastWakeTime, xPeriodUpdateStopWatch);
     }
 }
