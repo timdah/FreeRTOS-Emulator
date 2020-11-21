@@ -77,16 +77,23 @@ void vInputStopWatch(void *pvParameters)
             case 'r':
             { 
                 vTaskResume(TaskDisplayStopWatch); 
-                vTaskResume(TaskUpdateStopWatch); 
+                vTaskResume(TaskUpdateStopWatch);
+                printf("\n");
                 break;
             }
             case 's':
             { 
                 vTaskSuspend(TaskDisplayStopWatch); 
-                vTaskSuspend(TaskUpdateStopWatch); 
+                vTaskSuspend(TaskUpdateStopWatch);
+                printf("\n");
                 break;
             }
-            case 'c': time_in_ms = 0; break;
+            case 'c':
+            {
+                time_in_ms = 0;
+                printf("\n");
+                break;
+            }
         }
 
         tcsetattr( STDIN_FILENO, TCSANOW, &oldt);
