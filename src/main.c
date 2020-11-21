@@ -20,68 +20,131 @@
 
 /* #include "AsyncIO.h" */
 
-#define mainGENERIC_PRIORITY (tskIDLE_PRIORITY)
 #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
-#define mainTask1_PRIORITY (3)
-#define mainTask2_PRIORITY (2)
-#define mainTask3_PRIORITY (1)
+#define mainTaskDisplay_PRIORITY (2)
+#define mainTaskInput_PRIORITY (1)
+#define mainTaskTimer_PRIORITY (3)
 
-static TaskHandle_t Task1 = NULL;
-static TaskHandle_t Task2 = NULL;
-static TaskHandle_t Task3 = NULL;
-const portTickType xPeriod1 = 1000;
-const portTickType xPeriod2 = 5000;
-const portTickType xPeriod3 = 10000;
+static TaskHandle_t TaskDisplay = NULL;
+static TaskHandle_t TaskInput = NULL;
+static TaskHandle_t TaskTimer = NULL;
+//const portTickType xPeriodDisplay = 10000;
+//const portTickType xPeriodInput = 5000;
+const portTickType xPeriodTimer = 10;
 
-void vTaskBody1(void *pvParameters)
+typedef enum {
+	StopWatchStop, 
+	StopWatchRun, 
+	StopWatchClear, 
+} StopWatchState;
+
+StopWatchState xCurState = StopWatchClear;
+
+uint32_t uiTimerCounter = 0;
+uint32_t uiTimerCounterBck = 0;
+
+/**
+ * This task updates the output depending on the state of the Stop-Watch. 
+ * It does not require exact timing. It must not update any data variables.
+ */
+void vTaskBodyDisplay(void *pvParameter)
 {
-    portTickType xLastWakeTime;
-    while (1) {
-        xLastWakeTime = xTaskGetTickCount();
-        // Basic sleep of 1000 milliseconds
-        /* vTaskDelay((TickType_t)1000); */
-        printf("Task 1\n");
-        vTaskDelayUntil(&xLastWakeTime, xPeriod1);
-    }
+	while(1) {
+		if (xCurState == StopWatchStop) {
+			uint8_t ucMS = uiTimerCounter % 100;
+			uint8_t ucS = uiTimerCounter / 100 % 60;
+			uint8_t ucM = uiTimerCounter / 100 /60;
+			printf("Timer stands at %02d:%02d:%02d (mm:ss:ff).\nPress 'ENTER' to clear the timer: ", ucM, ucS, ucMS);
+		} else if(xCurState == StopWatchRun) {
+			uint8_t ucMS = uiTimerCounter % 100;
+			uint8_t ucS = uiTimerCounter / 100 % 60;
+			uint8_t ucM = uiTimerCounter / 100 /60;
+			printf("%02d:%02d:%02d\n", ucM, ucS, ucMS);
+		} else { // xCurState == StopWatchClear
+			printf("Press 'ENTER' to start and again to stop the timer: ");
+		}
+
+		vTaskSuspend(TaskDisplay);
+	}
+
+	vTaskDelete(NULL);
 }
 
-void vTaskBody2(void *pvParameters)
+void vTaskBodyInput(void *pvParameter)
 {
-    portTickType xLastWakeTime;
-    while (1) {
-        xLastWakeTime = xTaskGetTickCount();
-        // Basic sleep of 1000 milliseconds
-        /* vTaskDelay((TickType_t)1000); */
-        printf("Task 2\n");
-        /* tumFUtilPrintTaskStateList(); */
-        /* tumFUtilPrintTaskUtils(); */
-        vTaskDelayUntil(&xLastWakeTime, xPeriod2);
-    }
+	char pcInput[256];
+
+	while(1) {
+		char *pcRes = fgets(pcInput, 256, stdin);
+		if (pcRes != NULL) {
+			if (xCurState == StopWatchClear) {
+				xCurState = StopWatchRun;
+				vTaskResume(TaskTimer);
+			} else if (xCurState == StopWatchRun) {
+				xCurState = StopWatchStop;
+				vTaskResume(TaskDisplay);
+			} else { // xCurState == StopWatchStop
+				xCurState = StopWatchClear;
+				vTaskResume(TaskDisplay);
+			}
+		}
+	}
+
+	vTaskDelete(NULL);
 }
 
-void vTaskBody3(void *pvParameters)
+void vTaskBodyTimer(void *pvParameter)
 {
-    portTickType xLastWakeTime;
-    while (1) {
-        xLastWakeTime = xTaskGetTickCount();
-        // Basic sleep of 1000 milliseconds
-        /* vTaskDelay((TickType_t)1000); */
-        printf("Task 3\n");
-        /* tumFUtilPrintTaskStateList(); */
-        /* tumFUtilPrintTaskUtils(); */
-        vTaskDelayUntil(&xLastWakeTime, xPeriod3);
-    }
+	portTickType xLastWakeTime;
+
+	while(1) {
+		xLastWakeTime = xTaskGetTickCount();
+
+		if (xCurState != StopWatchRun) {
+			uiTimerCounterBck = uiTimerCounter;
+			uiTimerCounter = 0;
+			vTaskSuspend(TaskTimer);
+		}
+
+		uiTimerCounter++;
+
+		vTaskResume(TaskDisplay);
+		vTaskDelayUntil(&xLastWakeTime, xPeriodTimer);
+	}
+
+	vTaskDelete(NULL);
 }
 
 int main(int argc, char *argv[])
 {
-    xTaskCreate(vTaskBody1, "Task1", mainGENERIC_STACK_SIZE * 2, NULL,
-                    mainTask1_PRIORITY, &Task1); 
-    xTaskCreate(vTaskBody2, "Task2", mainGENERIC_STACK_SIZE * 2, NULL,
-                    mainTask2_PRIORITY, &Task2); 
-    xTaskCreate(vTaskBody3, "Task3", mainGENERIC_STACK_SIZE * 2, NULL,
-                    mainTask3_PRIORITY, &Task3); 
-    vTaskStartScheduler();
+	xTaskCreate(
+		vTaskBodyDisplay, 
+		"Display Task", 
+		mainGENERIC_STACK_SIZE * 2, 
+		NULL, 
+		mainTaskDisplay_PRIORITY, 
+		&TaskDisplay
+	);
+	
+	xTaskCreate(
+		vTaskBodyInput, 
+		"Input Task", 
+		mainGENERIC_STACK_SIZE * 2, 
+		NULL, 
+		mainTaskInput_PRIORITY, 
+		&TaskInput
+	);
+
+	xTaskCreate(
+		vTaskBodyTimer, 
+		"Timer Task", 
+		mainGENERIC_STACK_SIZE * 2, 
+		NULL, 
+		mainTaskTimer_PRIORITY, 
+		&TaskTimer
+	);
+
+	vTaskStartScheduler();
 
     return EXIT_SUCCESS;
 }
