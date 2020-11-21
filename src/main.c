@@ -32,7 +32,7 @@
 static TaskHandle_t TaskDisplayStopWatch = NULL;
 static TaskHandle_t TaskInputStopWatch = NULL;
 static TaskHandle_t TaskUpdateStopWatch = NULL;
-const portTickType xPeriodDisplayStopWatch = 1000;
+const portTickType xPeriodDisplayStopWatch = 100;
 const portTickType xPeriodInputStopWatch = 100;
 const portTickType xPeriodUpdateStopWatch = 10;
 
@@ -48,7 +48,7 @@ _Noreturn void vDisplayStopWatch(void *pvParameters)
     portTickType xLastWakeTime;
     while (1) {
         xLastWakeTime = xTaskGetTickCount();
-        printf("%f s\n", time_in_ms / 1000.0);
+        printf("\r%.1f s\t\t", time_in_ms / 1000.0);
         vTaskDelayUntil(&xLastWakeTime, xPeriodDisplayStopWatch);
     }
 }
@@ -88,20 +88,20 @@ _Noreturn void vInputStopWatch(void *pvParameters)
                 last_time = xTaskGetTickCount();
                 vTaskResume(TaskDisplayStopWatch); 
                 vTaskResume(TaskUpdateStopWatch);
-                printf("\n");
+                printf("\n\t\t");
                 break;
             }
             case 's':
             { 
                 vTaskSuspend(TaskDisplayStopWatch); 
                 vTaskSuspend(TaskUpdateStopWatch);
-                printf("\n");
+                printf("\n\t\t");
                 break;
             }
             case 'c':
             {
                 time_in_ms = 0;
-                printf("\n");
+                printf("\n\t\t");
                 break;
             }
         }
