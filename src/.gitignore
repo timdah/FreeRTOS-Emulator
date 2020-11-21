@@ -1,1 +1,3 @@
 .clangd
+cmake-build-debug/
+

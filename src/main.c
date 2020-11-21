@@ -22,18 +22,18 @@
 
 #define mainGENERIC_PRIORITY (tskIDLE_PRIORITY)
 #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
-#define mainTask1_PRIORITY (3)
+#define mainTask1_PRIORITY (1)
 #define mainTask2_PRIORITY (2)
-#define mainTask3_PRIORITY (1)
+#define mainTask3_PRIORITY (3)
 
-static TaskHandle_t Task1 = NULL;
-static TaskHandle_t Task2 = NULL;
-static TaskHandle_t Task3 = NULL;
-const portTickType xPeriod1 = 1000;
-const portTickType xPeriod2 = 5000;
-const portTickType xPeriod3 = 10000;
+static TaskHandle_t TaskDisplay = NULL;
+static TaskHandle_t TaskInput = NULL;
+static TaskHandle_t TaskTiming = NULL;
+const portTickType xPeriodDisplay = 1000;
+const portTickType xPeriodInput = 5000;
+const portTickType xPeriodTiming = 10000;
 
-void vTaskBody1(void *pvParameters)
+void vTaskDisplay(void *pvParameters)
 {
     portTickType xLastWakeTime;
     while (1) {
@@ -41,11 +41,13 @@ void vTaskBody1(void *pvParameters)
         // Basic sleep of 1000 milliseconds
         /* vTaskDelay((TickType_t)1000); */
         printf("Task 1\n");
-        vTaskDelayUntil(&xLastWakeTime, xPeriod1);
+        vTaskDelayUntil(&xLastWakeTime, xPeriodDisplay);
+	vTaskSuspend(TaskInput);
+	vTaskSuspend(TaskTiming);
     }
 }
 
-void vTaskBody2(void *pvParameters)
+void vTaskInput(void *pvParameters)
 {
     portTickType xLastWakeTime;
     while (1) {
@@ -55,11 +57,11 @@ void vTaskBody2(void *pvParameters)
         printf("Task 2\n");
         /* tumFUtilPrintTaskStateList(); */
         /* tumFUtilPrintTaskUtils(); */
-        vTaskDelayUntil(&xLastWakeTime, xPeriod2);
+        vTaskDelayUntil(&xLastWakeTime, xPeriodInput);
     }
 }
 
-void vTaskBody3(void *pvParameters)
+void vTaskTiming(void *pvParameters)
 {
     portTickType xLastWakeTime;
     while (1) {
@@ -69,18 +71,17 @@ void vTaskBody3(void *pvParameters)
         printf("Task 3\n");
         /* tumFUtilPrintTaskStateList(); */
         /* tumFUtilPrintTaskUtils(); */
-        vTaskDelayUntil(&xLastWakeTime, xPeriod3);
+        vTaskDelayUntil(&xLastWakeTime, xPeriodTiming);
     }
 }
 
+
+
 int main(int argc, char *argv[])
 {
-    xTaskCreate(vTaskBody1, "Task1", mainGENERIC_STACK_SIZE * 2, NULL,
-                    mainTask1_PRIORITY, &Task1); 
-    xTaskCreate(vTaskBody2, "Task2", mainGENERIC_STACK_SIZE * 2, NULL,
-                    mainTask2_PRIORITY, &Task2); 
-    xTaskCreate(vTaskBody3, "Task3", mainGENERIC_STACK_SIZE * 2, NULL,
-                    mainTask3_PRIORITY, &Task3); 
+    xTaskCreate(vTaskDisplay, "TaskDisplay", mainGENERIC_STACK_SIZE * 2, NULL, mainTask1_PRIORITY, &TaskDisplay);
+    xTaskCreate(vTaskInput, "TaskInput", mainGENERIC_STACK_SIZE * 2, NULL, mainTask2_PRIORITY, &TaskInput);
+    xTaskCreate(vTaskTiming, "TaskTiming", mainGENERIC_STACK_SIZE * 2, NULL, mainTask3_PRIORITY, &TaskTiming);
     vTaskStartScheduler();
 
     return EXIT_SUCCESS;
