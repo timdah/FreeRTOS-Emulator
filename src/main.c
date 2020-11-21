@@ -48,7 +48,7 @@ _Noreturn void vDisplayStopWatch(void *pvParameters)
     portTickType xLastWakeTime;
     while (1) {
         xLastWakeTime = xTaskGetTickCount();
-        printf("\r%.1f s\t\t", time_in_ms / 1000.0);
+        printf("\r%.1f s\t\t\t", time_in_ms / 1000.0);
         vTaskDelayUntil(&xLastWakeTime, xPeriodDisplayStopWatch);
     }
 }
@@ -65,21 +65,13 @@ _Noreturn void vInputStopWatch(void *pvParameters)
 
         static struct termios oldt, newt;
 
-        /*tcgetattr gets the parameters of the current terminal
-        STDIN_FILENO will tell tcgetattr that it should write the settings
-        of stdin to oldt*/
+        // modify stdin to pass input without enter
         tcgetattr( STDIN_FILENO, &oldt);
-        /*now the settings will be copied*/
         newt = oldt;
-
-        /*ICANON normally takes care that one line at a time will be processed
-        that means it will return if it sees a "\n" or an EOF or an EOL*/
         newt.c_lflag &= ~(ICANON);          
-
-        /*Those new settings will be set to STDIN
-        TCSANOW tells tcsetattr to change attributes immediately. */
         tcsetattr( STDIN_FILENO, TCSANOW, &newt);
 
+        // get the current input char
         char input = getchar();
         switch(input)
         {
@@ -88,20 +80,25 @@ _Noreturn void vInputStopWatch(void *pvParameters)
                 last_time = xTaskGetTickCount();
                 vTaskResume(TaskDisplayStopWatch); 
                 vTaskResume(TaskUpdateStopWatch);
-                printf("\n\t\t");
+                // clear console for prettier displaying
+                printf("%c[2K", 27);
                 break;
             }
             case 's':
             { 
                 vTaskSuspend(TaskDisplayStopWatch); 
                 vTaskSuspend(TaskUpdateStopWatch);
-                printf("\n\t\t");
+                // clear console and rewrite for prettier displaying
+                printf("%c[2K", 27);
+                printf("\r%.1f s\t\t\t", time_in_ms / 1000.0);
                 break;
             }
             case 'c':
             {
                 time_in_ms = 0;
-                printf("\n\t\t");
+                // clear console and rewrite for prettier displaying
+                printf("%c[2K", 27);
+                printf("\r%.1f s\t\t\t", time_in_ms / 1000.0);
                 break;
             }
         }
