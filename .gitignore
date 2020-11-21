@@ -26,6 +26,7 @@ CMakeDoxyfile.in
 CMakeDoxygenDefaults.cmake 
 CTestTestfile.cmake
 _deps
+cmake-build-debug/
 
 .metadata
 tmp/

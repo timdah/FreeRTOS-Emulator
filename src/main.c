@@ -32,23 +32,24 @@
 static TaskHandle_t TaskDisplayStopWatch = NULL;
 static TaskHandle_t TaskInputStopWatch = NULL;
 static TaskHandle_t TaskUpdateStopWatch = NULL;
-const portTickType xPeriod1 = 1000;
-const portTickType xPeriod2 = 100;
-const portTickType xPeriod3 = 10;
+const portTickType xPeriodDisplayStopWatch = 1000;
+const portTickType xPeriodInputStopWatch = 100;
+const portTickType xPeriodUpdateStopWatch = 10;
 
 unsigned long time_in_ms = 0; // stop watch time in ms
+uint64_t time_interval = 0;
 
-void vDisplayStopWatch(void *pvParameters)
+_Noreturn void vDisplayStopWatch(void *pvParameters)
 {
     portTickType xLastWakeTime;
     while (1) {
         xLastWakeTime = xTaskGetTickCount();
         printf("%f s\n", time_in_ms / 1000.0);
-        vTaskDelayUntil(&xLastWakeTime, xPeriod1);
+        vTaskDelayUntil(&xLastWakeTime, xPeriodDisplayStopWatch);
     }
 }
 
-void vInputStopWatch(void *pvParameters)
+_Noreturn void vInputStopWatch(void *pvParameters)
 {
     portTickType xLastWakeTime;
     while (1) {
@@ -75,7 +76,8 @@ void vInputStopWatch(void *pvParameters)
         switch(input)
         {
             case 'r':
-            { 
+            {
+                time_interval = xTaskGetTickCount();
                 vTaskResume(TaskDisplayStopWatch); 
                 vTaskResume(TaskUpdateStopWatch);
                 printf("\n");
@@ -98,19 +100,19 @@ void vInputStopWatch(void *pvParameters)
 
         tcsetattr( STDIN_FILENO, TCSANOW, &oldt);
 
-        vTaskDelayUntil(&xLastWakeTime, xPeriod2);
+        vTaskDelayUntil(&xLastWakeTime, xPeriodInputStopWatch);
     }
 }
 
-void vUpdateStopWatch(void *pvParameters)
+_Noreturn void vUpdateStopWatch(void *pvParameters)
 {
     portTickType xLastWakeTime;
-    uint64_t last_time = xTaskGetTickCount();
+    time_interval = xTaskGetTickCount();
     while (1) {
         xLastWakeTime = xTaskGetTickCount();
-        time_in_ms += xTaskGetTickCount() - last_time;
-        last_time = xTaskGetTickCount();
-        vTaskDelayUntil(&xLastWakeTime, xPeriod3);
+        time_in_ms += xTaskGetTickCount() - time_interval;
+        time_interval = xTaskGetTickCount();
+        vTaskDelayUntil(&xLastWakeTime, xPeriodUpdateStopWatch);
     }
 }
 
