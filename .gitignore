@@ -1,3 +1,5 @@
+freertos.code-workspace
+
 .clangd
 # Trace files
 trace.*
