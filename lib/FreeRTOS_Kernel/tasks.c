@@ -250,6 +250,22 @@ count overflows. */
         prvResetNextTaskUnblockTime();                                                                  \
     }
 
+/* pxDelayedTaskHeap and pxOverflowDelayedTaskHeap are switched when the tick
+count overflows. */
+#define taskSWITCH_DELAYED_HEAPS()                                                                  \
+    {                                                                                                   \
+        Heap *pxTemp;                                                                                 \
+        \
+        /* The delayed tasks list should be empty when the lists are switched. */                       \
+        configASSERT( ( listLIST_IS_EMPTY( pxDelayedTaskHeap ) ) );                                     \
+        \
+        pxTemp = pxDelayedTaskHeap;                                                                     \
+        pxDelayedTaskHeap = pxOverflowDelayedTaskHeap;                                                  \
+        pxOverflowDelayedTaskHeap = pxTemp;                                                             \
+        xNumOfOverflows++;                                                                              \
+        prvResetNextTaskUnblockTime();                                                                  \
+    }
+
 /*-----------------------------------------------------------*/
 
 /*
@@ -378,6 +394,9 @@ PRIVILEGED_DATA static List_t *volatile pxDelayedTaskList;              /*< Poin
 PRIVILEGED_DATA static List_t *volatile pxOverflowDelayedTaskList;      /*< Points to the delayed task list currently being used to hold tasks that have overflowed the current tick count. */
 PRIVILEGED_DATA static List_t xPendingReadyList;                        /*< Tasks that have been readied while the scheduler was suspended.  They will be moved to the ready list when the scheduler is resumed. */
 
+PRIVILEGED_DATA static Heap *volatile pxDelayedTaskHeap;
+PRIVILEGED_DATA static Heap *volatile pxOverflowDelayedTaskHeap;
+
 #if( INCLUDE_vTaskDelete == 1 )
 
 PRIVILEGED_DATA static List_t xTasksWaitingTermination;             /*< Tasks that have been deleted - but their memory not yet freed. */
@@ -402,6 +421,8 @@ PRIVILEGED_DATA static volatile BaseType_t xNumOfOverflows          = (BaseType_
 PRIVILEGED_DATA static UBaseType_t uxTaskNumber                     = (UBaseType_t) 0U;
 PRIVILEGED_DATA static volatile TickType_t xNextTaskUnblockTime     = (TickType_t) 0U;   /* Initialised to portMAX_DELAY before the scheduler starts. */
 PRIVILEGED_DATA static TaskHandle_t xIdleTaskHandle                 = NULL;         /*< Holds the handle of the idle task.  The idle task is created automatically when the scheduler is started. */
+
+PRIVILEGED_DATA static List_t xDelayedTaskWheel[ sizeof(TickType_t) ][256];
 
 /* Context switches are held pending while the scheduler is suspended.  Also,
 interrupts must not manipulate the xStateListItem of a TCB, or any of the
@@ -2351,7 +2372,8 @@ BaseType_t xTaskIncrementTick(void)
         xTickCount = xConstTickCount;
 
         if (xConstTickCount == (TickType_t) 0U) {
-            taskSWITCH_DELAYED_LISTS();
+            // taskSWITCH_DELAYED_LISTS();
+            taskSWITCH_DELAYED_HEAPS();
         }
         else {
             mtCOVERAGE_TEST_MARKER();
@@ -3114,6 +3136,9 @@ static void prvInitialiseTaskLists(void)
     vListInitialise(&xDelayedTaskList1);
     vListInitialise(&xDelayedTaskList2);
     vListInitialise(&xPendingReadyList);
+
+    pxDelayedTaskHeap = CreateHeap(HEAP_SIZE);
+    pxOverflowDelayedTaskHeap = CreateHeap(HEAP_SIZE);
 
 #if ( INCLUDE_vTaskDelete == 1 )
     {
@@ -4401,13 +4426,15 @@ static void prvAddCurrentTaskToDelayedList(TickType_t xTicksToWait, const BaseTy
 
             if (xTimeToWake < xConstTickCount) {
                 /* Wake time has overflowed.  Place this item in the overflow
-                list. */
-                vListInsert(pxOverflowDelayedTaskList, &(pxCurrentTCB->xStateListItem));
+                list / heap. */
+                // vListInsert(pxOverflowDelayedTaskList, &(pxCurrentTCB->xStateListItem));
+                insert(pxOverflowDelayedTaskHeap, &(pxCurrentTCB->xStateListItem));
             }
             else {
                 /* The wake time has not overflowed, so the current block list
                 is used. */
-                vListInsert(pxDelayedTaskList, &(pxCurrentTCB->xStateListItem));
+                // vListInsert(pxDelayedTaskList, &(pxCurrentTCB->xStateListItem));
+                insert(pxDelayedTaskHeap, &(pxCurrentTCB->xStateListItem));
 
                 /* If the task entering the blocked state was placed at the
                 head of the list of blocked tasks then xNextTaskUnblockTime

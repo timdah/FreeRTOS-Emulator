@@ -448,3 +448,31 @@ UBaseType_t uxListRemove(ListItem_t *const pxItemToRemove) PRIVILEGED_FUNCTION;
 
 #endif
 
+/**
+ * https://gist.github.com/sudhanshuptl/d86da25da46aa3d060e7be876bbdb343
+ * thanx 2 sudhanshuptl
+ */ 
+
+struct xHEAP_ITEM {
+    listFIRST_LIST_ITEM_INTEGRITY_CHECK_VALUE           /*< Set to a known value if configUSE_LIST_DATA_INTEGRITY_CHECK_BYTES is set to 1. */
+    configLIST_VOLATILE TickType_t xItemValue;          /*< The value being listed.  In most cases this is used to sort the list in descending order. */
+    void *pvOwner;                                      /*< Pointer to the object (normally a TCB) that contains the list item.  There is therefore a two way link between the object containing the list item and the list item itself. */
+    void *configLIST_VOLATILE pvContainer;              /*< Pointer to the list in which this list item is placed (if any). */
+    listSECOND_LIST_ITEM_INTEGRITY_CHECK_VALUE          /*< Set to a known value if configUSE_LIST_DATA_INTEGRITY_CHECK_BYTES is set to 1. */
+};
+typedef struct xHEAP_ITEM HeapItem_t;                   /* For some reason lint wants this as two separate definitions. */
+
+HEAP_SIZE = 1000;
+
+struct Heap {
+    ListItem_t *arr[];
+    int count;
+    int capacity;
+};
+typedef struct Heap Heap;
+
+Heap *CreateHeap(int capacity);
+void insert(Heap *h, ListItem_t *item);
+void heapify_bottom_top(Heap *h, int index);
+void heapify_top_bottom(Heap *h, int parent_node);
+ListItem_t *PopMin(Heap *h);

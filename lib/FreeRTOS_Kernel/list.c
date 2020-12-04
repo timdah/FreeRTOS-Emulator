@@ -233,3 +233,94 @@ UBaseType_t uxListRemove(ListItem_t *const pxItemToRemove)
 }
 /*-----------------------------------------------------------*/
 
+
+
+Heap *CreateHeap(int capacity)
+{
+    Heap *h = (Heap * ) malloc(sizeof(Heap));
+
+    //check if memory allocation failed
+    if (h == NULL) {
+        printf("Memory Error!");
+        return;
+    }
+
+    h->count=0;
+    h->capacity = capacity;
+    h->arr = (ListItem_t **) malloc(capacity*sizeof(ListItem_t *)); //size in bytes
+
+    //check if allocation succeed
+    if ( h->arr == NULL) {
+        printf("Memory Error!");
+        return;
+    }
+
+    return h;
+}
+
+void insert(Heap *h, ListItem_t *item)
+{
+    if (h->count < h->capacity) {
+        h->arr[h->count] = item;
+        heapify_bottom_top(h, h->count);
+        h->count++;
+    }
+}
+
+void heapify_bottom_top(Heap *h,int index)
+{
+    ListItem_t *temp;
+    int parent_node = (index - 1) / 2;
+
+    if(h->arr[parent_node]->xItemValue > h->arr[index]->xItemValue) {
+        //swap and recursive call
+        temp = h->arr[parent_node];
+        h->arr[parent_node] = h->arr[index];
+        h->arr[index] = temp;
+        heapify_bottom_top(h, parent_node);
+    }
+}
+
+void heapify_top_bottom(Heap *h, int parent_node)
+{
+    int left = parent_node * 2 + 1;
+    int right = parent_node * 2 + 2;
+    int min;
+    ListItem_t *temp;
+
+    if (left >= h->count || left <0)
+        left = -1;
+    if (right >= h->count || right <0)
+        right = -1;
+
+    if (left != -1 && h->arr[left]->xItemValue < h->arr[parent_node]->xItemValue)
+        min=left;
+    else
+        min =parent_node;
+    if (right != -1 && h->arr[right] < h->arr[min])
+        min = right;
+
+    if (min != parent_node) {
+        temp = h->arr[min];
+        h->arr[min] = h->arr[parent_node];
+        h->arr[parent_node] = temp;
+
+        // recursive  call
+        heapify_top_bottom(h, min);
+    }
+}
+
+ListItem_t *PopMin(Heap *h)
+{
+    ListItem_t pop;
+    if (h->count==0) {
+        printf("\n__Heap is Empty__\n");
+        return -1;
+    }
+    // replace first node by last and delete last
+    pop = h->arr[0];
+    h->arr[0] = h->arr[h->count-1];
+    h->count--;
+    heapify_top_bottom(h, 0);
+    return pop;
+}
