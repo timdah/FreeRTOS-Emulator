@@ -236,24 +236,28 @@ UBaseType_t uxListRemove(ListItem_t *const pxItemToRemove)
 void vTimingWheelInitialise(TimingWheel_t *const pxWheel, TickType_t xTickCount)
 {
     for (TickType_t level = 0; level < listTIMING_WHEEL_LEVELS; level++) {
-        for (TickType_t slot = 0; slot < listTIMING_WHEEL_SLOTS; slot++) {
+        for (TickType_t slot = 0; slot < listTIMING_WHEEL_SLOTS; slot++) { // take care that slot can store numbers greater than 255!
             vListInitialise(&pxWheel->pxWheelHirarchy[level][slot]);
         }
 
+        /* slect the byte from xTickCount given by level and shift it so it fits into TimingWheelBase_t */
         TimingWheelBase_t xIndex = (TimingWheelBase_t) ((xTickCount & ((TimingWheelBase_t) 0xFF << 8 * level)) >> (8 * level));
-        pxWheel->xLevelIndexArray[level] = xIndex; // (xTickCount & (0xFF << 8 * level)) >> 8 * level;
+        pxWheel->xLevelIndexArray[level] = xIndex;
     }
 }
 
 void vTimingWheelInsertAt(TimingWheel_t *const pxWheel, ListItem_t *const pxNewListItem, TimingWheelBase_t xLevel)
 {
+    /* slect the byte from xTickCount given by level and shift it so it fits into TimingWheelBase_t */
     TimingWheelBase_t xIndex = (TimingWheelBase_t) ((pxNewListItem->xItemValue & ((TimingWheelBase_t) 0xFF << 8 * xLevel)) >> (8 * xLevel));
 
+    /* can not go deeper -> insert */
     if (xLevel == 0) {
         vListInsertEnd(&pxWheel->pxWheelHirarchy[0][xIndex], pxNewListItem);
         return;
     }
 
+    /* go one hirarchy level deeper when xIndex matches the current index held by the current hirarchy level  */
     if (pxWheel->xLevelIndexArray[xLevel] == xIndex) {
         vTimingWheelInsertAt(pxWheel, pxNewListItem, xLevel - 1);
     } else {
@@ -274,9 +278,10 @@ BaseType_t xTimingWheelAdvance(TimingWheel_t *const pxWheel)
         for (TimingWheelBase_t level = 1; level < listTIMING_WHEEL_LEVELS; level++) {
             pxWheel->xLevelIndexArray[level] += 1;
 
+            /* retrieve the list of outstanding timers given by one of the outer hirarchy levels */
             List_t *pxList = &pxWheel->pxWheelHirarchy[level][pxWheel->xLevelIndexArray[level]];
 
-            // if (!listLIST_IS_EMPTY(pxList))
+            /* loop does not run when pxList is empty, otherwise insert the outstanding timers into the inner hirarchy layers */
             uint32_t ulLimit = pxList->uxNumberOfItems;
             for (uint32_t i = 0; i < ulLimit; i++) {
                 ListItem_t *pxListItem = listGET_HEAD_ENTRY(pxList);
@@ -284,11 +289,11 @@ BaseType_t xTimingWheelAdvance(TimingWheel_t *const pxWheel)
                 vTimingWheelInsertAt(pxWheel, pxListItem, level - 1);
             }
 
-            if (pxWheel->xLevelIndexArray[level] != 0) {
+            if (pxWheel->xLevelIndexArray[level] != 0) { // no overflow -> no more outstanding timers
                 break;
             }
 
-            // else: overflow -> continue one hirarchy level higher
+            // else: overflow -> continue one hirarchy level higher, looking for outstanding timers
         }
 
         return pdTRUE;

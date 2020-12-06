@@ -220,9 +220,13 @@ typedef uint8_t TimingWheelBase_t;
 typedef uint8_t TimingWheelBase_t;
 #endif
 
+/**
+ * The innermost hirarch of the timing wheel has the index 0. 
+ * Its position given by xLevelIndexArray[0] is incremented ervery system tick. 
+ */
 typedef struct xTIMINGWHEEL {
-    List_t pxWheelHirarchy[listTIMING_WHEEL_LEVELS][listTIMING_WHEEL_SLOTS];     /* 2 = sizeof(TickType_t) && 256 = 8 to the power of 2 */
-    TimingWheelBase_t xLevelIndexArray[listTIMING_WHEEL_LEVELS];          /* pointer to an item of each of the hirarchy levels (here 2) */
+    List_t pxWheelHirarchy[listTIMING_WHEEL_LEVELS][listTIMING_WHEEL_SLOTS];    /* 2 = sizeof(TickType_t) && 256 = 8 to the power of 2 */
+    TimingWheelBase_t xLevelIndexArray[listTIMING_WHEEL_LEVELS];                /* pointer to an item of each of the hirarchy levels (here 2) */
 } TimingWheel_t;
 
 /*
@@ -459,8 +463,39 @@ void vListInsertEnd(List_t *const pxList, ListItem_t *const pxNewListItem) PRIVI
  */
 UBaseType_t uxListRemove(ListItem_t *const pxItemToRemove) PRIVILEGED_FUNCTION;
 
+/*
+ * Must be called before a timing wheel is used!  This initialises all the members
+ * of the timing wheel structure. 
+ *
+ * @param pxWheel Pointer to the timing wheel being initialised.
+ *
+ * \page vTimingWheelInitialise vTimingWheelInitialise
+ * \ingroup TimingWheel
+ */
 void vTimingWheelInitialise(TimingWheel_t *const pxWheel, TickType_t xTickCount);
+
+/*
+ * Called every system tick to advance the timing wheel by one position, while 
+ * handling the occurence of overflows in the respective timing wheel hirarchy 
+ * levels and inserting pending tasks into higher hirarchy levels. 
+ *
+ * @param pxWheel Pointer to the timing wheel to be advanced
+ *
+ * \page xTimingWheelAdvance xTimingWheelAdvance
+ * \ingroup TimingWheel
+ */
 BaseType_t xTimingWheelAdvance(TimingWheel_t *const pxWheel);
+
+/*
+ * Called to insert a list item into the timing wheel according to its item value.
+ *
+ * @param pxWheel Pointer to the timing wheel where the list item should be inserted
+ * 
+ * @param pxNewListItem Pointer to the list item to be inserted
+ *
+ * \page vTimingWheelInsert vTimingWheelInsert
+ * \ingroup TimingWheel
+ */
 void vTimingWheelInsert(TimingWheel_t *const pxWheel, ListItem_t *const pxNewListItem);
 
 #ifdef __cplusplus
