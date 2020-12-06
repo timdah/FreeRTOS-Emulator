@@ -1,0 +1,528 @@
+diff --git a/.gitignore b/.gitignore
+index 4085228..206f673 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,3 +1,5 @@
++freertos.code-workspace
++
+ .clangd
+ # Trace files
+ trace.*
+diff --git a/lib/FreeRTOS_Kernel/include/list.h b/lib/FreeRTOS_Kernel/include/list.h
+index 126f288..66976f1 100644
+--- a/lib/FreeRTOS_Kernel/include/list.h
++++ b/lib/FreeRTOS_Kernel/include/list.h
+@@ -208,6 +208,27 @@ typedef struct xLIST {
+     listSECOND_LIST_INTEGRITY_CHECK_VALUE               /*< Set to a known value if configUSE_LIST_DATA_INTEGRITY_CHECK_BYTES is set to 1. */
+ } List_t;
+ 
++#if( configUSE_16_BIT_TICKS == 1 ) // typedef uint16_t TickType_t;
++#define listTIMING_WHEEL_LEVELS (sizeof(TickType_t))    /* number of bytes in TickType_t */
++#define listTIMING_WHEEL_SLOTS  256                     /* number of slots per level, typically a power of 2 (max depending on TimingWheelBase_t) */
++
++typedef uint8_t TimingWheelBase_t;
++#else // using uint32_t to store the tick count > typedef uint32_t TickType_t;
++#define listTIMING_WHEEL_LEVELS (sizeof(TickType_t))    /* number of bytes in TickType_t */
++#define listTIMING_WHEEL_SLOTS  256                     /* number of slots per level, typically a power of 2 (max depending on TimingWheelBase_t) */
++
++typedef uint8_t TimingWheelBase_t;
++#endif
++
++/**
++ * The innermost hirarch of the timing wheel has the index 0. 
++ * Its position given by xLevelIndexArray[0] is incremented ervery system tick. 
++ */
++typedef struct xTIMINGWHEEL {
++    List_t pxWheelHirarchy[listTIMING_WHEEL_LEVELS][listTIMING_WHEEL_SLOTS];    /* 2 = sizeof(TickType_t) && 256 = 8 to the power of 2 */
++    TimingWheelBase_t xLevelIndexArray[listTIMING_WHEEL_LEVELS];                /* pointer to an item of each of the hirarchy levels (here 2) */
++} TimingWheel_t;
++
+ /*
+  * Access macro to set the owner of a list item.  The owner of a list item
+  * is the object (usually a TCB) that contains the list item.
+@@ -442,6 +463,41 @@ void vListInsertEnd(List_t *const pxList, ListItem_t *const pxNewListItem) PRIVI
+  */
+ UBaseType_t uxListRemove(ListItem_t *const pxItemToRemove) PRIVILEGED_FUNCTION;
+ 
++/*
++ * Must be called before a timing wheel is used!  This initialises all the members
++ * of the timing wheel structure. 
++ *
++ * @param pxWheel Pointer to the timing wheel being initialised.
++ *
++ * \page vTimingWheelInitialise vTimingWheelInitialise
++ * \ingroup TimingWheel
++ */
++void vTimingWheelInitialise(TimingWheel_t *const pxWheel, TickType_t xTickCount);
++
++/*
++ * Called every system tick to advance the timing wheel by one position, while 
++ * handling the occurence of overflows in the respective timing wheel hirarchy 
++ * levels and inserting pending tasks into higher hirarchy levels. 
++ *
++ * @param pxWheel Pointer to the timing wheel to be advanced
++ *
++ * \page xTimingWheelAdvance xTimingWheelAdvance
++ * \ingroup TimingWheel
++ */
++BaseType_t xTimingWheelAdvance(TimingWheel_t *const pxWheel);
++
++/*
++ * Called to insert a list item into the timing wheel according to its item value.
++ *
++ * @param pxWheel Pointer to the timing wheel where the list item should be inserted
++ * 
++ * @param pxNewListItem Pointer to the list item to be inserted
++ *
++ * \page vTimingWheelInsert vTimingWheelInsert
++ * \ingroup TimingWheel
++ */
++void vTimingWheelInsert(TimingWheel_t *const pxWheel, ListItem_t *const pxNewListItem);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/lib/FreeRTOS_Kernel/list.c b/lib/FreeRTOS_Kernel/list.c
+index bebca6b..7aee14f 100644
+--- a/lib/FreeRTOS_Kernel/list.c
++++ b/lib/FreeRTOS_Kernel/list.c
+@@ -233,3 +233,72 @@ UBaseType_t uxListRemove(ListItem_t *const pxItemToRemove)
+ }
+ /*-----------------------------------------------------------*/
+ 
++void vTimingWheelInitialise(TimingWheel_t *const pxWheel, TickType_t xTickCount)
++{
++    for (TickType_t level = 0; level < listTIMING_WHEEL_LEVELS; level++) {
++        for (TickType_t slot = 0; slot < listTIMING_WHEEL_SLOTS; slot++) { // take care that slot can store numbers greater than 255!
++            vListInitialise(&pxWheel->pxWheelHirarchy[level][slot]);
++        }
++
++        /* slect the byte from xTickCount given by level and shift it so it fits into TimingWheelBase_t */
++        TimingWheelBase_t xIndex = (TimingWheelBase_t) ((xTickCount & ((TimingWheelBase_t) 0xFF << 8 * level)) >> (8 * level));
++        pxWheel->xLevelIndexArray[level] = xIndex;
++    }
++}
++
++void vTimingWheelInsertAt(TimingWheel_t *const pxWheel, ListItem_t *const pxNewListItem, TimingWheelBase_t xLevel)
++{
++    /* slect the byte from xTickCount given by level and shift it so it fits into TimingWheelBase_t */
++    TimingWheelBase_t xIndex = (TimingWheelBase_t) ((pxNewListItem->xItemValue & ((TimingWheelBase_t) 0xFF << 8 * xLevel)) >> (8 * xLevel));
++
++    /* can not go deeper -> insert */
++    if (xLevel == 0) {
++        vListInsertEnd(&pxWheel->pxWheelHirarchy[0][xIndex], pxNewListItem);
++        return;
++    }
++
++    /* go one hirarchy level deeper when xIndex matches the current index held by the current hirarchy level  */
++    if (pxWheel->xLevelIndexArray[xLevel] == xIndex) {
++        vTimingWheelInsertAt(pxWheel, pxNewListItem, xLevel - 1);
++    } else {
++        vListInsertEnd(&pxWheel->pxWheelHirarchy[xLevel][xIndex], pxNewListItem);
++    }
++}
++
++void vTimingWheelInsert(TimingWheel_t *const pxWheel, ListItem_t *const pxNewListItem)
++{
++    vTimingWheelInsertAt(pxWheel, pxNewListItem, listTIMING_WHEEL_LEVELS - 1); // substract 1 to index the outmost hirarchy level
++}
++
++BaseType_t xTimingWheelAdvance(TimingWheel_t *const pxWheel)
++{
++    pxWheel->xLevelIndexArray[0] += 1;
++
++    if (pxWheel->xLevelIndexArray[0] == 0) { // overflow at innermost hirarchy level
++        for (TimingWheelBase_t level = 1; level < listTIMING_WHEEL_LEVELS; level++) {
++            pxWheel->xLevelIndexArray[level] += 1;
++
++            /* retrieve the list of outstanding timers given by one of the outer hirarchy levels */
++            List_t *pxList = &pxWheel->pxWheelHirarchy[level][pxWheel->xLevelIndexArray[level]];
++
++            /* loop does not run when pxList is empty, otherwise insert the outstanding timers into the inner hirarchy layers */
++            uint32_t ulLimit = pxList->uxNumberOfItems;
++            for (uint32_t i = 0; i < ulLimit; i++) {
++                ListItem_t *pxListItem = listGET_HEAD_ENTRY(pxList);
++                uxListRemove(pxListItem);
++                vTimingWheelInsertAt(pxWheel, pxListItem, level - 1);
++            }
++
++            if (pxWheel->xLevelIndexArray[level] != 0) { // no overflow -> no more outstanding timers
++                break;
++            }
++
++            // else: overflow -> continue one hirarchy level higher, looking for outstanding timers
++        }
++
++        return pdTRUE;
++    }
++
++    return pdFALSE;
++}
++
+diff --git a/lib/FreeRTOS_Kernel/tasks.c b/lib/FreeRTOS_Kernel/tasks.c
+index 5226e41..59706da 100644
+--- a/lib/FreeRTOS_Kernel/tasks.c
++++ b/lib/FreeRTOS_Kernel/tasks.c
+@@ -234,21 +234,21 @@ or suspended list then it won't be in a ready list. */
+ 
+ /*-----------------------------------------------------------*/
+ 
+-/* pxDelayedTaskList and pxOverflowDelayedTaskList are switched when the tick
+-count overflows. */
+-#define taskSWITCH_DELAYED_LISTS()                                                                  \
+-    {                                                                                                   \
+-        List_t *pxTemp;                                                                                 \
+-        \
+-        /* The delayed tasks list should be empty when the lists are switched. */                       \
+-        configASSERT( ( listLIST_IS_EMPTY( pxDelayedTaskList ) ) );                                     \
+-        \
+-        pxTemp = pxDelayedTaskList;                                                                     \
+-        pxDelayedTaskList = pxOverflowDelayedTaskList;                                                  \
+-        pxOverflowDelayedTaskList = pxTemp;                                                             \
+-        xNumOfOverflows++;                                                                              \
+-        prvResetNextTaskUnblockTime();                                                                  \
+-    }
++// /* pxDelayedTaskList and pxOverflowDelayedTaskList are switched when the tick
++// count overflows. */
++// #define taskSWITCH_DELAYED_LISTS()                                                                  \
++//     {                                                                                                   \
++//         List_t *pxTemp;                                                                                 \
++//         \
++//         /* The delayed tasks list should be empty when the lists are switched. */                       \
++//         configASSERT( ( listLIST_IS_EMPTY( pxDelayedTaskList ) ) );                                     \
++//         \
++//         pxTemp = pxDelayedTaskList;                                                                     \
++//         pxDelayedTaskList = pxOverflowDelayedTaskList;                                                  \
++//         pxOverflowDelayedTaskList = pxTemp;                                                             \
++//         xNumOfOverflows++;                                                                              \
++//         prvResetNextTaskUnblockTime();                                                                  \
++//     }
+ 
+ /*-----------------------------------------------------------*/
+ 
+@@ -372,12 +372,15 @@ PRIVILEGED_DATA TCB_t *volatile pxCurrentTCB = NULL;
+ 
+ /* Lists for ready and blocked tasks. --------------------*/
+ PRIVILEGED_DATA static List_t pxReadyTasksLists[ configMAX_PRIORITIES ];/*< Prioritised ready tasks. */
+-PRIVILEGED_DATA static List_t xDelayedTaskList1;                        /*< Delayed tasks. */
+-PRIVILEGED_DATA static List_t xDelayedTaskList2;                        /*< Delayed tasks (two lists are used - one for delays that have overflowed the current tick count. */
+-PRIVILEGED_DATA static List_t *volatile pxDelayedTaskList;              /*< Points to the delayed task list currently being used. */
+-PRIVILEGED_DATA static List_t *volatile pxOverflowDelayedTaskList;      /*< Points to the delayed task list currently being used to hold tasks that have overflowed the current tick count. */
++// PRIVILEGED_DATA static List_t xDelayedTaskList1;                        /*< Delayed tasks. */
++// PRIVILEGED_DATA static List_t xDelayedTaskList2;                        /*< Delayed tasks (two lists are used - one for delays that have overflowed the current tick count. */
++// PRIVILEGED_DATA static List_t *volatile pxDelayedTaskList;              /*< Points to the delayed task list currently being used. */
++// PRIVILEGED_DATA static List_t *volatile pxOverflowDelayedTaskList;      /*< Points to the delayed task list currently being used to hold tasks that have overflowed the current tick count. */
+ PRIVILEGED_DATA static List_t xPendingReadyList;                        /*< Tasks that have been readied while the scheduler was suspended.  They will be moved to the ready list when the scheduler is resumed. */
+ 
++PRIVILEGED_DATA static TimingWheel_t xTimingWheel;
++
++
+ #if( INCLUDE_vTaskDelete == 1 )
+ 
+ PRIVILEGED_DATA static List_t xTasksWaitingTermination;             /*< Tasks that have been deleted - but their memory not yet freed. */
+@@ -739,6 +742,7 @@ BaseType_t xTaskCreate(TaskFunction_t pxTaskCode,
+ 
+         prvInitialiseNewTask(pxTaskCode, pcName, (uint32_t) usStackDepth, pvParameters, uxPriority, pxCreatedTask, pxNewTCB, NULL);
+         prvAddNewTaskToReadyList(pxNewTCB);
++
+         xReturn = pdPASS;
+     }
+     else {
+@@ -1212,6 +1216,7 @@ eTaskState eTaskGetState(TaskHandle_t xTask)
+ {
+     eTaskState eReturn;
+     List_t *pxStateList;
++    TimingWheel_t *pxTimingWheel;
+     const TCB_t *const pxTCB = (TCB_t *) xTask;
+ 
+     configASSERT(pxTCB);
+@@ -1223,11 +1228,12 @@ eTaskState eTaskGetState(TaskHandle_t xTask)
+     else {
+         taskENTER_CRITICAL();
+         {
++            pxTimingWheel = (TimingWheel_t *) listLIST_ITEM_CONTAINER(&(pxTCB->xStateListItem));
+             pxStateList = (List_t *) listLIST_ITEM_CONTAINER(&(pxTCB->xStateListItem));
+         }
+         taskEXIT_CRITICAL();
+ 
+-        if ((pxStateList == pxDelayedTaskList) || (pxStateList == pxOverflowDelayedTaskList)) {
++        if (pxTimingWheel == &xTimingWheel) {
+             /* The task being queried is referenced from one of the Blocked
+             lists. */
+             eReturn = eBlocked;
+@@ -2182,8 +2188,8 @@ UBaseType_t uxTaskGetSystemState(TaskStatus_t *const pxTaskStatusArray, const UB
+ 
+             /* Fill in an TaskStatus_t structure with information on each
+             task in the Blocked state. */
+-            uxTask += prvListTasksWithinSingleList(&(pxTaskStatusArray[ uxTask ]), (List_t *) pxDelayedTaskList, eBlocked);
+-            uxTask += prvListTasksWithinSingleList(&(pxTaskStatusArray[ uxTask ]), (List_t *) pxOverflowDelayedTaskList, eBlocked);
++            // uxTask += prvListTasksWithinSingleList(&(pxTaskStatusArray[ uxTask ]), (List_t *) pxDelayedTaskList, eBlocked);
++            // uxTask += prvListTasksWithinSingleList(&(pxTaskStatusArray[ uxTask ]), (List_t *) pxOverflowDelayedTaskList, eBlocked);
+ 
+ #if( INCLUDE_vTaskDelete == 1 )
+             {
+@@ -2350,18 +2356,24 @@ BaseType_t xTaskIncrementTick(void)
+         delayed lists if it wraps to 0. */
+         xTickCount = xConstTickCount;
+ 
+-        if (xConstTickCount == (TickType_t) 0U) {
+-            taskSWITCH_DELAYED_LISTS();
++        /* increment the index of the innermost timing wheel level */
++        // xTimingWheel.xLevelIndexArray[0] += 1;
++
++        if (xTimingWheelAdvance(&xTimingWheel)) {
++            xNumOfOverflows++;
++            prvResetNextTaskUnblockTime();
+         }
+         else {
+             mtCOVERAGE_TEST_MARKER();
+         }
+ 
++        List_t *pxDelayedTaskList = &xTimingWheel.pxWheelHirarchy[0][xTimingWheel.xLevelIndexArray[0]];
++
+         /* See if this tick has made a timeout expire.  Tasks are stored in
+         the queue in the order of their wake time - meaning once one task
+         has been found whose block time has not expired there is no need to
+         look any further down the list. */
+-        if (xConstTickCount >= xNextTaskUnblockTime) {
++        if (listLIST_IS_EMPTY(&xTimingWheel.pxWheelHirarchy[0][xTimingWheel.xLevelIndexArray[0]]) == pdFALSE) {
+             for (;;) {
+                 if (listLIST_IS_EMPTY(pxDelayedTaskList) != pdFALSE) {
+                     /* The delayed list is empty.  Set xNextTaskUnblockTime
+@@ -3111,8 +3123,7 @@ static void prvInitialiseTaskLists(void)
+         vListInitialise(&(pxReadyTasksLists[ uxPriority ]));
+     }
+ 
+-    vListInitialise(&xDelayedTaskList1);
+-    vListInitialise(&xDelayedTaskList2);
++    vTimingWheelInitialise(&xTimingWheel, xTickCount);
+     vListInitialise(&xPendingReadyList);
+ 
+ #if ( INCLUDE_vTaskDelete == 1 )
+@@ -3126,11 +3137,6 @@ static void prvInitialiseTaskLists(void)
+         vListInitialise(&xSuspendedTaskList);
+     }
+ #endif /* INCLUDE_vTaskSuspend */
+-
+-    /* Start with pxDelayedTaskList using list1 and the pxOverflowDelayedTaskList
+-    using list2. */
+-    pxDelayedTaskList = &xDelayedTaskList1;
+-    pxOverflowDelayedTaskList = &xDelayedTaskList2;
+ }
+ /*-----------------------------------------------------------*/
+ 
+@@ -3392,6 +3398,7 @@ static void prvDeleteTCB(TCB_t *pxTCB)
+ static void prvResetNextTaskUnblockTime(void)
+ {
+     TCB_t *pxTCB;
++    List_t *pxDelayedTaskList = &xTimingWheel.pxWheelHirarchy[0][xTimingWheel.xLevelIndexArray[0]];
+ 
+     if (listLIST_IS_EMPTY(pxDelayedTaskList) != pdFALSE) {
+         /* The new current delayed list is empty.  Set xNextTaskUnblockTime to
+@@ -4399,16 +4406,9 @@ static void prvAddCurrentTaskToDelayedList(TickType_t xTicksToWait, const BaseTy
+             /* The list item will be inserted in wake time order. */
+             listSET_LIST_ITEM_VALUE(&(pxCurrentTCB->xStateListItem), xTimeToWake);
+ 
+-            if (xTimeToWake < xConstTickCount) {
+-                /* Wake time has overflowed.  Place this item in the overflow
+-                list. */
+-                vListInsert(pxOverflowDelayedTaskList, &(pxCurrentTCB->xStateListItem));
+-            }
+-            else {
+-                /* The wake time has not overflowed, so the current block list
+-                is used. */
+-                vListInsert(pxDelayedTaskList, &(pxCurrentTCB->xStateListItem));
++            vTimingWheelInsert(&xTimingWheel, &(pxCurrentTCB->xStateListItem));
+ 
++            if (xTimeToWake >= xConstTickCount) {
+                 /* If the task entering the blocked state was placed at the
+                 head of the list of blocked tasks then xNextTaskUnblockTime
+                 needs to be updated too. */
+diff --git a/src/main.c b/src/main.c
+index bcf31f7..1c7e28d 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -20,131 +20,70 @@
+ 
+ /* #include "AsyncIO.h" */
+ 
++#define mainGENERIC_PRIORITY (tskIDLE_PRIORITY)
+ #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
+-#define mainTaskDisplay_PRIORITY (2)
+-#define mainTaskInput_PRIORITY (1)
+-#define mainTaskTimer_PRIORITY (3)
+-
+-static TaskHandle_t TaskDisplay = NULL;
+-static TaskHandle_t TaskInput = NULL;
+-static TaskHandle_t TaskTimer = NULL;
+-//const portTickType xPeriodDisplay = 10000;
+-//const portTickType xPeriodInput = 5000;
+-const portTickType xPeriodTimer = 10;
+-
+-typedef enum {
+-	StopWatchStop, 
+-	StopWatchRun, 
+-	StopWatchClear, 
+-} StopWatchState;
+-
+-StopWatchState xCurState = StopWatchClear;
+-
+-uint32_t uiTimerCounter = 0;
+-uint32_t uiTimerCounterBck = 0;
+-
+-/**
+- * This task updates the output depending on the state of the Stop-Watch. 
+- * It does not require exact timing. It must not update any data variables.
+- */
+-void vTaskBodyDisplay(void *pvParameter)
++#define mainTask1_PRIORITY (3)
++#define mainTask2_PRIORITY (2)
++#define mainTask3_PRIORITY (1)
++
++static TaskHandle_t Task1 = NULL;
++static TaskHandle_t Task2 = NULL;
++static TaskHandle_t Task3 = NULL;
++const portTickType xPeriod1 = 1000;
++const portTickType xPeriod2 = 5000;
++const portTickType xPeriod3 = 10000;
++
++void vTaskBody1(void *pvParameters)
+ {
+-	while(1) {
+-		if (xCurState == StopWatchStop) {
+-			uint8_t ucMS = uiTimerCounter % 100;
+-			uint8_t ucS = uiTimerCounter / 100 % 60;
+-			uint8_t ucM = uiTimerCounter / 100 /60;
+-			printf("Timer stands at %02d:%02d:%02d (mm:ss:ff).\nPress 'ENTER' to clear the timer: ", ucM, ucS, ucMS);
+-		} else if(xCurState == StopWatchRun) {
+-			uint8_t ucMS = uiTimerCounter % 100;
+-			uint8_t ucS = uiTimerCounter / 100 % 60;
+-			uint8_t ucM = uiTimerCounter / 100 /60;
+-			printf("%02d:%02d:%02d\n", ucM, ucS, ucMS);
+-		} else { // xCurState == StopWatchClear
+-			printf("Press 'ENTER' to start and again to stop the timer: ");
+-		}
+-
+-		vTaskSuspend(TaskDisplay);
+-	}
+-
+-	vTaskDelete(NULL);
++    portTickType xLastWakeTime;
++    while (1) {
++        xLastWakeTime = xTaskGetTickCount();
++        // Basic sleep of 1000 milliseconds
++        /* vTaskDelay((TickType_t)1000); */
++        printf("Task 1\n");
++        vTaskDelayUntil(&xLastWakeTime, xPeriod1);
++    }
+ }
+ 
+-void vTaskBodyInput(void *pvParameter)
++void vTaskBody2(void *pvParameters)
+ {
+-	char pcInput[256];
+-
+-	while(1) {
+-		char *pcRes = fgets(pcInput, 256, stdin);
+-		if (pcRes != NULL) {
+-			if (xCurState == StopWatchClear) {
+-				xCurState = StopWatchRun;
+-				vTaskResume(TaskTimer);
+-			} else if (xCurState == StopWatchRun) {
+-				xCurState = StopWatchStop;
+-				vTaskResume(TaskDisplay);
+-			} else { // xCurState == StopWatchStop
+-				xCurState = StopWatchClear;
+-				vTaskResume(TaskDisplay);
+-			}
+-		}
+-	}
+-
+-	vTaskDelete(NULL);
++    portTickType xLastWakeTime;
++    while (1) {
++        xLastWakeTime = xTaskGetTickCount();
++        // Basic sleep of 1000 milliseconds
++        /* vTaskDelay((TickType_t)1000); */
++        printf("Task 2\n");
++        /* tumFUtilPrintTaskStateList(); */
++        /* tumFUtilPrintTaskUtils(); */
++        vTaskDelayUntil(&xLastWakeTime, xPeriod2);
++    }
+ }
+ 
+-void vTaskBodyTimer(void *pvParameter)
++void vTaskBody3(void *pvParameters)
+ {
+-	portTickType xLastWakeTime;
+-
+-	while(1) {
+-		xLastWakeTime = xTaskGetTickCount();
+-
+-		if (xCurState != StopWatchRun) {
+-			uiTimerCounterBck = uiTimerCounter;
+-			uiTimerCounter = 0;
+-			vTaskSuspend(TaskTimer);
+-		}
+-
+-		uiTimerCounter++;
+-
+-		vTaskResume(TaskDisplay);
+-		vTaskDelayUntil(&xLastWakeTime, xPeriodTimer);
+-	}
+-
+-	vTaskDelete(NULL);
++    portTickType xLastWakeTime;
++    while (1) {
++        xLastWakeTime = xTaskGetTickCount();
++        // Basic sleep of 1000 milliseconds
++        /* vTaskDelay((TickType_t)1000); */
++        printf("Task 3\n");
++        /* tumFUtilPrintTaskStateList(); */
++        /* tumFUtilPrintTaskUtils(); */
++        vTaskDelayUntil(&xLastWakeTime, xPeriod3);
++    }
+ }
+ 
+ int main(int argc, char *argv[])
+ {
+-	xTaskCreate(
+-		vTaskBodyDisplay, 
+-		"Display Task", 
+-		mainGENERIC_STACK_SIZE * 2, 
+-		NULL, 
+-		mainTaskDisplay_PRIORITY, 
+-		&TaskDisplay
+-	);
+-	
+-	xTaskCreate(
+-		vTaskBodyInput, 
+-		"Input Task", 
+-		mainGENERIC_STACK_SIZE * 2, 
+-		NULL, 
+-		mainTaskInput_PRIORITY, 
+-		&TaskInput
+-	);
+-
+-	xTaskCreate(
+-		vTaskBodyTimer, 
+-		"Timer Task", 
+-		mainGENERIC_STACK_SIZE * 2, 
+-		NULL, 
+-		mainTaskTimer_PRIORITY, 
+-		&TaskTimer
+-	);
+-
+-	vTaskStartScheduler();
++    printf(">> 1\n");
++
++    xTaskCreate(vTaskBody1, "Task1", mainGENERIC_STACK_SIZE * 2, NULL,
++                    mainTask1_PRIORITY, &Task1); 
++    xTaskCreate(vTaskBody2, "Task2", mainGENERIC_STACK_SIZE * 2, NULL,
++                    mainTask2_PRIORITY, &Task2); 
++    xTaskCreate(vTaskBody3, "Task3", mainGENERIC_STACK_SIZE * 2, NULL,
++                    mainTask3_PRIORITY, &Task3); 
++    vTaskStartScheduler();
+ 
+     return EXIT_SUCCESS;
+ }
