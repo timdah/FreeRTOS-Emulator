@@ -234,21 +234,21 @@ or suspended list then it won't be in a ready list. */
 
 /*-----------------------------------------------------------*/
 
-/* pxDelayedTaskList and pxOverflowDelayedTaskList are switched when the tick
-count overflows. */
-#define taskSWITCH_DELAYED_LISTS()                                                                  \
-    {                                                                                                   \
-        List_t *pxTemp;                                                                                 \
-        \
-        /* The delayed tasks list should be empty when the lists are switched. */                       \
-        configASSERT( ( listLIST_IS_EMPTY( pxDelayedTaskList ) ) );                                     \
-        \
-        pxTemp = pxDelayedTaskList;                                                                     \
-        pxDelayedTaskList = pxOverflowDelayedTaskList;                                                  \
-        pxOverflowDelayedTaskList = pxTemp;                                                             \
-        xNumOfOverflows++;                                                                              \
-        prvResetNextTaskUnblockTime();                                                                  \
-    }
+// /* pxDelayedTaskList and pxOverflowDelayedTaskList are switched when the tick
+// count overflows. */
+// #define taskSWITCH_DELAYED_LISTS()                                                                  \
+//     {                                                                                                   \
+//         List_t *pxTemp;                                                                                 \
+//         \
+//         /* The delayed tasks list should be empty when the lists are switched. */                       \
+//         configASSERT( ( listLIST_IS_EMPTY( pxDelayedTaskList ) ) );                                     \
+//         \
+//         pxTemp = pxDelayedTaskList;                                                                     \
+//         pxDelayedTaskList = pxOverflowDelayedTaskList;                                                  \
+//         pxOverflowDelayedTaskList = pxTemp;                                                             \
+//         xNumOfOverflows++;                                                                              \
+//         prvResetNextTaskUnblockTime();                                                                  \
+//     }
 
 /*-----------------------------------------------------------*/
 
@@ -372,11 +372,14 @@ PRIVILEGED_DATA TCB_t *volatile pxCurrentTCB = NULL;
 
 /* Lists for ready and blocked tasks. --------------------*/
 PRIVILEGED_DATA static List_t pxReadyTasksLists[ configMAX_PRIORITIES ];/*< Prioritised ready tasks. */
-PRIVILEGED_DATA static List_t xDelayedTaskList1;                        /*< Delayed tasks. */
-PRIVILEGED_DATA static List_t xDelayedTaskList2;                        /*< Delayed tasks (two lists are used - one for delays that have overflowed the current tick count. */
-PRIVILEGED_DATA static List_t *volatile pxDelayedTaskList;              /*< Points to the delayed task list currently being used. */
-PRIVILEGED_DATA static List_t *volatile pxOverflowDelayedTaskList;      /*< Points to the delayed task list currently being used to hold tasks that have overflowed the current tick count. */
+// PRIVILEGED_DATA static List_t xDelayedTaskList1;                        /*< Delayed tasks. */
+// PRIVILEGED_DATA static List_t xDelayedTaskList2;                        /*< Delayed tasks (two lists are used - one for delays that have overflowed the current tick count. */
+// PRIVILEGED_DATA static List_t *volatile pxDelayedTaskList;              /*< Points to the delayed task list currently being used. */
+// PRIVILEGED_DATA static List_t *volatile pxOverflowDelayedTaskList;      /*< Points to the delayed task list currently being used to hold tasks that have overflowed the current tick count. */
 PRIVILEGED_DATA static List_t xPendingReadyList;                        /*< Tasks that have been readied while the scheduler was suspended.  They will be moved to the ready list when the scheduler is resumed. */
+
+PRIVILEGED_DATA static TimingWheel_t xTimingWheel;
+
 
 #if( INCLUDE_vTaskDelete == 1 )
 
@@ -739,6 +742,7 @@ BaseType_t xTaskCreate(TaskFunction_t pxTaskCode,
 
         prvInitialiseNewTask(pxTaskCode, pcName, (uint32_t) usStackDepth, pvParameters, uxPriority, pxCreatedTask, pxNewTCB, NULL);
         prvAddNewTaskToReadyList(pxNewTCB);
+
         xReturn = pdPASS;
     }
     else {
@@ -1212,6 +1216,7 @@ eTaskState eTaskGetState(TaskHandle_t xTask)
 {
     eTaskState eReturn;
     List_t *pxStateList;
+    TimingWheel_t *pxTimingWheel;
     const TCB_t *const pxTCB = (TCB_t *) xTask;
 
     configASSERT(pxTCB);
@@ -1223,11 +1228,12 @@ eTaskState eTaskGetState(TaskHandle_t xTask)
     else {
         taskENTER_CRITICAL();
         {
+            pxTimingWheel = (TimingWheel_t *) listLIST_ITEM_CONTAINER(&(pxTCB->xStateListItem));
             pxStateList = (List_t *) listLIST_ITEM_CONTAINER(&(pxTCB->xStateListItem));
         }
         taskEXIT_CRITICAL();
 
-        if ((pxStateList == pxDelayedTaskList) || (pxStateList == pxOverflowDelayedTaskList)) {
+        if (pxTimingWheel == &xTimingWheel) {
             /* The task being queried is referenced from one of the Blocked
             lists. */
             eReturn = eBlocked;
@@ -2182,8 +2188,8 @@ UBaseType_t uxTaskGetSystemState(TaskStatus_t *const pxTaskStatusArray, const UB
 
             /* Fill in an TaskStatus_t structure with information on each
             task in the Blocked state. */
-            uxTask += prvListTasksWithinSingleList(&(pxTaskStatusArray[ uxTask ]), (List_t *) pxDelayedTaskList, eBlocked);
-            uxTask += prvListTasksWithinSingleList(&(pxTaskStatusArray[ uxTask ]), (List_t *) pxOverflowDelayedTaskList, eBlocked);
+            // uxTask += prvListTasksWithinSingleList(&(pxTaskStatusArray[ uxTask ]), (List_t *) pxDelayedTaskList, eBlocked);
+            // uxTask += prvListTasksWithinSingleList(&(pxTaskStatusArray[ uxTask ]), (List_t *) pxOverflowDelayedTaskList, eBlocked);
 
 #if( INCLUDE_vTaskDelete == 1 )
             {
@@ -2350,18 +2356,24 @@ BaseType_t xTaskIncrementTick(void)
         delayed lists if it wraps to 0. */
         xTickCount = xConstTickCount;
 
-        if (xConstTickCount == (TickType_t) 0U) {
-            taskSWITCH_DELAYED_LISTS();
+        /* increment the index of the innermost timing wheel level */
+        // xTimingWheel.xLevelIndexArray[0] += 1;
+
+        if (xTimingWheelAdvance(&xTimingWheel)) {
+            xNumOfOverflows++;
+            prvResetNextTaskUnblockTime();
         }
         else {
             mtCOVERAGE_TEST_MARKER();
         }
 
+        List_t *pxDelayedTaskList = &xTimingWheel.pxWheelHirarchy[0][xTimingWheel.xLevelIndexArray[0]];
+
         /* See if this tick has made a timeout expire.  Tasks are stored in
         the queue in the order of their wake time - meaning once one task
         has been found whose block time has not expired there is no need to
         look any further down the list. */
-        if (xConstTickCount >= xNextTaskUnblockTime) {
+        if (listLIST_IS_EMPTY(&xTimingWheel.pxWheelHirarchy[0][xTimingWheel.xLevelIndexArray[0]]) == pdFALSE) {
             for (;;) {
                 if (listLIST_IS_EMPTY(pxDelayedTaskList) != pdFALSE) {
                     /* The delayed list is empty.  Set xNextTaskUnblockTime
@@ -3111,8 +3123,7 @@ static void prvInitialiseTaskLists(void)
         vListInitialise(&(pxReadyTasksLists[ uxPriority ]));
     }
 
-    vListInitialise(&xDelayedTaskList1);
-    vListInitialise(&xDelayedTaskList2);
+    vTimingWheelInitialise(&xTimingWheel, xTickCount);
     vListInitialise(&xPendingReadyList);
 
 #if ( INCLUDE_vTaskDelete == 1 )
@@ -3126,11 +3137,6 @@ static void prvInitialiseTaskLists(void)
         vListInitialise(&xSuspendedTaskList);
     }
 #endif /* INCLUDE_vTaskSuspend */
-
-    /* Start with pxDelayedTaskList using list1 and the pxOverflowDelayedTaskList
-    using list2. */
-    pxDelayedTaskList = &xDelayedTaskList1;
-    pxOverflowDelayedTaskList = &xDelayedTaskList2;
 }
 /*-----------------------------------------------------------*/
 
@@ -3392,6 +3398,7 @@ static void prvDeleteTCB(TCB_t *pxTCB)
 static void prvResetNextTaskUnblockTime(void)
 {
     TCB_t *pxTCB;
+    List_t *pxDelayedTaskList = &xTimingWheel.pxWheelHirarchy[0][xTimingWheel.xLevelIndexArray[0]];
 
     if (listLIST_IS_EMPTY(pxDelayedTaskList) != pdFALSE) {
         /* The new current delayed list is empty.  Set xNextTaskUnblockTime to
@@ -4399,16 +4406,9 @@ static void prvAddCurrentTaskToDelayedList(TickType_t xTicksToWait, const BaseTy
             /* The list item will be inserted in wake time order. */
             listSET_LIST_ITEM_VALUE(&(pxCurrentTCB->xStateListItem), xTimeToWake);
 
-            if (xTimeToWake < xConstTickCount) {
-                /* Wake time has overflowed.  Place this item in the overflow
-                list. */
-                vListInsert(pxOverflowDelayedTaskList, &(pxCurrentTCB->xStateListItem));
-            }
-            else {
-                /* The wake time has not overflowed, so the current block list
-                is used. */
-                vListInsert(pxDelayedTaskList, &(pxCurrentTCB->xStateListItem));
+            vTimingWheelInsert(&xTimingWheel, &(pxCurrentTCB->xStateListItem));
 
+            if (xTimeToWake >= xConstTickCount) {
                 /* If the task entering the blocked state was placed at the
                 head of the list of blocked tasks then xNextTaskUnblockTime
                 needs to be updated too. */

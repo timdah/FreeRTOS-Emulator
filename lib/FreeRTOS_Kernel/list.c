@@ -233,3 +233,67 @@ UBaseType_t uxListRemove(ListItem_t *const pxItemToRemove)
 }
 /*-----------------------------------------------------------*/
 
+void vTimingWheelInitialise(TimingWheel_t *const pxWheel, TickType_t xTickCount)
+{
+    for (TickType_t level = 0; level < listTIMING_WHEEL_LEVELS; level++) {
+        for (TickType_t slot = 0; slot < listTIMING_WHEEL_SLOTS; slot++) {
+            vListInitialise(&pxWheel->pxWheelHirarchy[level][slot]);
+        }
+
+        TimingWheelBase_t xIndex = (TimingWheelBase_t) ((xTickCount & ((TimingWheelBase_t) 0xFF << 8 * level)) >> (8 * level));
+        pxWheel->xLevelIndexArray[level] = xIndex; // (xTickCount & (0xFF << 8 * level)) >> 8 * level;
+    }
+}
+
+void vTimingWheelInsertAt(TimingWheel_t *const pxWheel, ListItem_t *const pxNewListItem, TimingWheelBase_t xLevel)
+{
+    TimingWheelBase_t xIndex = (TimingWheelBase_t) ((pxNewListItem->xItemValue & ((TimingWheelBase_t) 0xFF << 8 * xLevel)) >> (8 * xLevel));
+
+    if (xLevel == 0) {
+        vListInsertEnd(&pxWheel->pxWheelHirarchy[0][xIndex], pxNewListItem);
+        return;
+    }
+
+    if (pxWheel->xLevelIndexArray[xLevel] == xIndex) {
+        vTimingWheelInsertAt(pxWheel, pxNewListItem, xLevel - 1);
+    } else {
+        vListInsertEnd(&pxWheel->pxWheelHirarchy[xLevel][xIndex], pxNewListItem);
+    }
+}
+
+void vTimingWheelInsert(TimingWheel_t *const pxWheel, ListItem_t *const pxNewListItem)
+{
+    vTimingWheelInsertAt(pxWheel, pxNewListItem, listTIMING_WHEEL_LEVELS - 1); // substract 1 to index the outmost hirarchy level
+}
+
+BaseType_t xTimingWheelAdvance(TimingWheel_t *const pxWheel)
+{
+    pxWheel->xLevelIndexArray[0] += 1;
+
+    if (pxWheel->xLevelIndexArray[0] == 0) { // overflow at innermost hirarchy level
+        for (TimingWheelBase_t level = 1; level < listTIMING_WHEEL_LEVELS; level++) {
+            pxWheel->xLevelIndexArray[level] += 1;
+
+            List_t *pxList = &pxWheel->pxWheelHirarchy[level][pxWheel->xLevelIndexArray[level]];
+
+            // if (!listLIST_IS_EMPTY(pxList))
+            uint32_t ulLimit = pxList->uxNumberOfItems;
+            for (uint32_t i = 0; i < ulLimit; i++) {
+                ListItem_t *pxListItem = listGET_HEAD_ENTRY(pxList);
+                uxListRemove(pxListItem);
+                vTimingWheelInsertAt(pxWheel, pxListItem, level - 1);
+            }
+
+            if (pxWheel->xLevelIndexArray[level] != 0) {
+                break;
+            }
+
+            // else: overflow -> continue one hirarchy level higher
+        }
+
+        return pdTRUE;
+    }
+
+    return pdFALSE;
+}
+

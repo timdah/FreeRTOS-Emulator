@@ -208,6 +208,23 @@ typedef struct xLIST {
     listSECOND_LIST_INTEGRITY_CHECK_VALUE               /*< Set to a known value if configUSE_LIST_DATA_INTEGRITY_CHECK_BYTES is set to 1. */
 } List_t;
 
+#if( configUSE_16_BIT_TICKS == 1 ) // typedef uint16_t TickType_t;
+#define listTIMING_WHEEL_LEVELS (sizeof(TickType_t))    /* number of bytes in TickType_t */
+#define listTIMING_WHEEL_SLOTS  256                     /* number of slots per level, typically a power of 2 (max depending on TimingWheelBase_t) */
+
+typedef uint8_t TimingWheelBase_t;
+#else // using uint32_t to store the tick count > typedef uint32_t TickType_t;
+#define listTIMING_WHEEL_LEVELS (sizeof(TickType_t))    /* number of bytes in TickType_t */
+#define listTIMING_WHEEL_SLOTS  256                     /* number of slots per level, typically a power of 2 (max depending on TimingWheelBase_t) */
+
+typedef uint8_t TimingWheelBase_t;
+#endif
+
+typedef struct xTIMINGWHEEL {
+    List_t pxWheelHirarchy[listTIMING_WHEEL_LEVELS][listTIMING_WHEEL_SLOTS];     /* 2 = sizeof(TickType_t) && 256 = 8 to the power of 2 */
+    TimingWheelBase_t xLevelIndexArray[listTIMING_WHEEL_LEVELS];          /* pointer to an item of each of the hirarchy levels (here 2) */
+} TimingWheel_t;
+
 /*
  * Access macro to set the owner of a list item.  The owner of a list item
  * is the object (usually a TCB) that contains the list item.
@@ -441,6 +458,10 @@ void vListInsertEnd(List_t *const pxList, ListItem_t *const pxNewListItem) PRIVI
  * \ingroup LinkedList
  */
 UBaseType_t uxListRemove(ListItem_t *const pxItemToRemove) PRIVILEGED_FUNCTION;
+
+void vTimingWheelInitialise(TimingWheel_t *const pxWheel, TickType_t xTickCount);
+BaseType_t xTimingWheelAdvance(TimingWheel_t *const pxWheel);
+void vTimingWheelInsert(TimingWheel_t *const pxWheel, ListItem_t *const pxNewListItem);
 
 #ifdef __cplusplus
 }
