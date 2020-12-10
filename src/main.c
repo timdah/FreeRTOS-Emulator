@@ -25,114 +25,68 @@
 
 #define mainGENERIC_PRIORITY (tskIDLE_PRIORITY)
 #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
-#define mainTask1_PRIORITY (1)
-#define mainTask2_PRIORITY (2)
-#define mainTask3_PRIORITY (3)
+#define TaskLine1_PRIORITY (1)
+#define TaskLine2_PRIORITY (1)
+#define TaskLine3_PRIORITY (1)
+#define TaskPrinter_PRIORITY (1)
 
-static TaskHandle_t TaskDisplayStopWatch = NULL;
-static TaskHandle_t TaskInputStopWatch = NULL;
-static TaskHandle_t TaskUpdateStopWatch = NULL;
-const portTickType xPeriodDisplayStopWatch = 100;
-const portTickType xPeriodInputStopWatch = 100;
-const portTickType xPeriodUpdateStopWatch = 10;
+static TaskHandle_t TaskLine1 = NULL;
+static TaskHandle_t TaskLine2 = NULL;
+static TaskHandle_t TaskLine3 = NULL;
+static TaskHandle_t TaskPrinter = NULL;
+const portTickType xPeriodLine1 = 100;
+const portTickType xPeriodLine2 = 200;
+const portTickType xPeriodLine3 = 300;
+const portTickType xPeriodPrinter = 100;
 
-unsigned long time_in_ms = 0; // stop watch time in ms
-uint64_t last_time = 0; // last time for measurement task
 
-/**
- * Displaying stopwatch task
- * @param pvParameters
- */
-_Noreturn void vDisplayStopWatch(void *pvParameters)
+
+_Noreturn void vLine1(void *pvParameters)
 {
     portTickType xLastWakeTime;
     while (1) {
         xLastWakeTime = xTaskGetTickCount();
-        printf("\r%.1f s\t\t\t", time_in_ms / 1000.0);
-        vTaskDelayUntil(&xLastWakeTime, xPeriodDisplayStopWatch);
+        vTaskDelayUntil(&xLastWakeTime, xPeriodLine1);
     }
 }
 
-/**
- * Handling user input task
- * @param pvParameters
- */
-_Noreturn void vInputStopWatch(void *pvParameters)
+_Noreturn void vLine2(void *pvParameters)
 {
     portTickType xLastWakeTime;
     while (1) {
         xLastWakeTime = xTaskGetTickCount();
-
-        static struct termios oldt, newt;
-
-        // modify stdin to pass input without enter
-        tcgetattr( STDIN_FILENO, &oldt);
-        newt = oldt;
-        newt.c_lflag &= ~(ICANON);          
-        tcsetattr( STDIN_FILENO, TCSANOW, &newt);
-
-        // get the current input char
-        char input = getchar();
-        switch(input)
-        {
-            case 'r':
-            {
-                last_time = xTaskGetTickCount();
-                vTaskResume(TaskDisplayStopWatch); 
-                vTaskResume(TaskUpdateStopWatch);
-                // clear console for prettier displaying
-                printf("%c[2K", 27);
-                break;
-            }
-            case 's':
-            { 
-                vTaskSuspend(TaskDisplayStopWatch); 
-                vTaskSuspend(TaskUpdateStopWatch);
-                // clear console and rewrite for prettier displaying
-                printf("%c[2K", 27);
-                printf("\r%.1f s\t\t\t", time_in_ms / 1000.0);
-                break;
-            }
-            case 'c':
-            {
-                time_in_ms = 0;
-                // clear console and rewrite for prettier displaying
-                printf("%c[2K", 27);
-                printf("\r%.1f s\t\t\t", time_in_ms / 1000.0);
-                break;
-            }
-        }
-
-        tcsetattr( STDIN_FILENO, TCSANOW, &oldt);
-
-        vTaskDelayUntil(&xLastWakeTime, xPeriodInputStopWatch);
+        vTaskDelayUntil(&xLastWakeTime, xPeriodLine2);
     }
 }
 
-/**
- * Time measurement task
- * @param pvParameters
- */
-_Noreturn void vUpdateStopWatch(void *pvParameters)
+_Noreturn void vLine3(void *pvParameters)
 {
     portTickType xLastWakeTime;
-    last_time = xTaskGetTickCount();
     while (1) {
         xLastWakeTime = xTaskGetTickCount();
-        time_in_ms += xTaskGetTickCount() - last_time;
-        last_time = xTaskGetTickCount();
-        vTaskDelayUntil(&xLastWakeTime, xPeriodUpdateStopWatch);
+        vTaskDelayUntil(&xLastWakeTime, xPeriodLine2);
+    }
+}
+
+_Noreturn void vPrinter(void *pvParameters)
+{
+    portTickType xLastWakeTime;
+    while (1) {
+        xLastWakeTime = xTaskGetTickCount();
+        vTaskDelayUntil(&xLastWakeTime, xPeriodPrinter);
     }
 }
 
 int main(int argc, char *argv[])
 {
-    xTaskCreate(vDisplayStopWatch, "Task1", mainGENERIC_STACK_SIZE * 2, NULL,
-                    mainTask1_PRIORITY, &TaskDisplayStopWatch); 
-    xTaskCreate(vInputStopWatch, "Task2", mainGENERIC_STACK_SIZE * 2, NULL,
-                    mainTask2_PRIORITY, &TaskInputStopWatch); 
-    xTaskCreate(vUpdateStopWatch, "Task3", mainGENERIC_STACK_SIZE * 2, NULL,
-                    mainTask3_PRIORITY, &TaskUpdateStopWatch); 
+    xTaskCreate(vLine1, "Line1", mainGENERIC_STACK_SIZE * 2, NULL,
+                    TaskLine1_PRIORITY, &TaskLine1); 
+    xTaskCreate(vLine2, "Line2", mainGENERIC_STACK_SIZE * 2, NULL,
+                    TaskLine2_PRIORITY, &TaskLine2); 
+    xTaskCreate(vLine3, "Line3", mainGENERIC_STACK_SIZE * 2, NULL,
+                    TaskLine3_PRIORITY, &TaskLine3);
+    xTaskCreate(vPrinter, "Line3", mainGENERIC_STACK_SIZE * 2, NULL,
+                    TaskPrinter_PRIORITY, &TaskPrinter); 
     vTaskStartScheduler();
 
     return EXIT_SUCCESS;
