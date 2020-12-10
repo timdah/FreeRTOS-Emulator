@@ -25,9 +25,9 @@
 
 #define mainGENERIC_PRIORITY (tskIDLE_PRIORITY)
 #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
-#define TaskLine1_PRIORITY (1)
-#define TaskLine2_PRIORITY (1)
-#define TaskLine3_PRIORITY (1)
+#define TaskLine1_PRIORITY (2)
+#define TaskLine2_PRIORITY (3)
+#define TaskLine3_PRIORITY (4)
 #define TaskPrinter_PRIORITY (1)
 
 static TaskHandle_t TaskLine1 = NULL;
@@ -38,19 +38,18 @@ const portTickType xPeriodLine1 = 100;
 const portTickType xPeriodLine2 = 200;
 const portTickType xPeriodLine3 = 300;
 
-xQueueHandle DispTaskLine;
+PriorityQueue *DispTaskLine;
 
 _Noreturn void vLine1(void *pvParameters)
 {
     portTickType xLastWakeTime;
     char *str;
-    char counter=0;
     str = pvPortMalloc(5 * sizeof(char));
 
     while (1) {
         sprintf(str, "Line1");
         printf("vLine1: %s\n", str);
-        xQueueSend(DispTaskLine, &str, 0);
+        xPriorityQueueGenericSend(DispTaskLine, &str, 0, TaskLine1);
 
         xLastWakeTime = xTaskGetTickCount();
         vTaskDelayUntil(&xLastWakeTime, xPeriodLine1);
@@ -61,13 +60,12 @@ _Noreturn void vLine2(void *pvParameters)
 {
     portTickType xLastWakeTime;
     char *str;
-    char counter=0;
     str = pvPortMalloc(5 * sizeof(char));
 
     while (1) {
         sprintf(str, "Line2");
         printf("vLine2: %s\n", str);
-        xQueueSend(DispTaskLine, &str, 0);
+        xPriorityQueueGenericSend(DispTaskLine, &str, 0,TaskLine2);
 
         xLastWakeTime = xTaskGetTickCount();
         vTaskDelayUntil(&xLastWakeTime, xPeriodLine2);
@@ -78,13 +76,12 @@ _Noreturn void vLine3(void *pvParameters)
 {
     portTickType xLastWakeTime;
     char *str;
-    char counter=0;
     str = pvPortMalloc(5 * sizeof(char));
 
     while (1) {
         sprintf(str, "Line3");
         printf("vLine3: %s\n", str);
-        xQueueSend(DispTaskLine, &str, 0);
+        xPriorityQueueGenericSend(DispTaskLine, &str, 0, TaskLine3);
 
         xLastWakeTime = xTaskGetTickCount();
         vTaskDelayUntil(&xLastWakeTime, xPeriodLine3);
@@ -93,17 +90,28 @@ _Noreturn void vLine3(void *pvParameters)
 
 _Noreturn void vPrinter(void *pvParameters)
 {
+    // portTickType xLastWakeTime;
     char *xMessage;
-    DispTaskLine = xQueueCreate(6, 5 * sizeof(char *)) ;
 
     while (1) {
-        xQueueReceive(DispTaskLine, &xMessage, portMAX_DELAY); 
-        printf("Printer: %s\n", xMessage);
+        // if (xPriorityQueueGenericReceivePeekHigh(DispTaskLine, &xMessage)) {
+        //     printf("PeekHigh: \t%s\n", xMessage);
+        // }
+        if (xPriorityQueueGenericReceiveHigh(DispTaskLine, &xMessage)) {
+            printf("ReceiveHigh: \t%s\n", xMessage);
+        }
+        // if (xPriorityQueueGenericReceiveLow(DispTaskLine, &xMessage)) {
+        //     printf("ReceiveLow: \t%s\n", xMessage);
+        // }
+        // xLastWakeTime = xTaskGetTickCount();
+        // vTaskDelayUntil(&xLastWakeTime, 1);
     }
 }
 
 int main(int argc, char *argv[])
 {
+    DispTaskLine = xPriorityQueueGenericCreate(6, 5 * sizeof(char *));
+
     xTaskCreate(vLine1, "Line1", mainGENERIC_STACK_SIZE * 2, NULL,
                     TaskLine1_PRIORITY, &TaskLine1); 
     xTaskCreate(vLine2, "Line2", mainGENERIC_STACK_SIZE * 2, NULL,
@@ -112,6 +120,7 @@ int main(int argc, char *argv[])
                     TaskLine3_PRIORITY, &TaskLine3);
     xTaskCreate(vPrinter, "Printer", mainGENERIC_STACK_SIZE * 2, NULL,
                     TaskPrinter_PRIORITY, &TaskPrinter); 
+
     vTaskStartScheduler();
 
     return EXIT_SUCCESS;

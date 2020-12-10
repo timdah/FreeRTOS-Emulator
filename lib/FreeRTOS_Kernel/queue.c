@@ -2570,3 +2570,66 @@ static BaseType_t prvNotifyQueueSetContainer(const Queue_t *const pxQueue,
 }
 
 #endif /* configUSE_QUEUE_SETS */
+
+/* ----------------------------------------------------------------------------- */
+
+PriorityQueue *xPriorityQueueGenericCreate(const UBaseType_t uxQueueLength,
+                                  const UBaseType_t uxItemSize)
+{
+    PriorityQueue *pxNewPriorityQueue = (PriorityQueue *) pvPortMalloc(sizeof(PriorityQueue));
+    int i;
+    for (i = 0; i < configMAX_PRIORITIES; i++) {
+        pxNewPriorityQueue->priorityQueues[i] = xQueueGenericCreate(uxQueueLength, uxItemSize, queueQUEUE_TYPE_BASE);
+    }
+    return pxNewPriorityQueue;
+}
+
+BaseType_t xPriorityQueueGenericSend(PriorityQueue *xPriorityQueue,
+                                    const void *const pvItemToQueue,
+                                    TickType_t xTicksToWait,
+                                    xTaskHandle xTask)
+{
+    return xQueueGenericSend(xPriorityQueue->priorityQueues[uxTaskPriorityGet(xTask)], pvItemToQueue, xTicksToWait, queueSEND_TO_BACK);
+}
+
+BaseType_t xPriorityQueueGenericReceiveHigh(PriorityQueue *xPriorityQueue, void *const pvBuffer)
+{
+    int i;
+    for (i = configMAX_PRIORITIES - 1; i >= 0; i--) {
+        if (uxQueueMessagesWaiting(xPriorityQueue->priorityQueues[i]) > 0) {
+            return xQueueGenericReceive(xPriorityQueue->priorityQueues[i], pvBuffer, portMAX_DELAY, pdFALSE);
+        }
+    }
+    return errQUEUE_EMPTY;
+}
+
+BaseType_t xPriorityQueueGenericReceiveLow(PriorityQueue *xPriorityQueue, void *const pvBuffer)
+{
+    int i;
+    for (i = 0; i < configMAX_PRIORITIES; i++) {
+        if (uxQueueMessagesWaiting(xPriorityQueue->priorityQueues[i]) > 0) {
+            return xQueueGenericReceive(xPriorityQueue->priorityQueues[i], pvBuffer, portMAX_DELAY, pdFALSE);
+        }
+    }
+    return errQUEUE_EMPTY;
+}
+
+BaseType_t xPriorityQueueGenericReceivePeekHigh(PriorityQueue *xPriorityQueue, void *const pvBuffer)
+{
+    int i;
+    for (i = configMAX_PRIORITIES - 1; i >= 0; i--) {
+        if (uxQueueMessagesWaiting(xPriorityQueue->priorityQueues[i]) > 0) {
+            return xQueueGenericReceive(xPriorityQueue->priorityQueues[i], pvBuffer, portMAX_DELAY, pdTRUE);
+        }
+    }
+    return errQUEUE_EMPTY;
+}
+
+void vPriorityQueueDelete(PriorityQueue *xPriorityQueue)
+{
+    int i;
+    for (i = 0; i < configMAX_PRIORITIES; i++) {
+        vPortFree(xPriorityQueue->priorityQueues[i]);
+    }
+    vPortFree(xPriorityQueue);
+}

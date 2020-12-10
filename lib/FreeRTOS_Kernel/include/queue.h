@@ -79,6 +79,8 @@
 extern "C" {
 #endif
 
+#include "task.h"
+
 
 /**
  * Type by which queues are referenced.  For example, a call to xQueueCreate()
@@ -1793,6 +1795,26 @@ uint8_t ucQueueGetQueueType(QueueHandle_t xQueue) PRIVILEGED_FUNCTION;
 #ifdef __cplusplus
 }
 #endif
+
+typedef struct PriorityQueue {
+    PRIVILEGED_DATA QueueHandle_t priorityQueues[configMAX_PRIORITIES]; /*< Prioritised queues. */
+} PriorityQueue;
+
+PriorityQueue *xPriorityQueueGenericCreate(const UBaseType_t uxQueueLength,
+                                  const UBaseType_t uxItemSize);
+
+BaseType_t xPriorityQueueGenericSend(PriorityQueue *xPriorityQueue,
+                                    const void *const pvItemToQueue,
+                                    TickType_t xTicksToWait,
+                                    xTaskHandle xTask);
+
+BaseType_t xPriorityQueueGenericReceiveHigh(PriorityQueue *xPriorityQueue, void *const pvBuffer);
+
+BaseType_t xPriorityQueueGenericReceiveLow(PriorityQueue *xPriorityQueue, void *const pvBuffer);
+
+BaseType_t xPriorityQueueGenericReceivePeekHigh(PriorityQueue *xPriorityQueue, void *const pvBuffer);
+
+void vPriorityQueueDelete(PriorityQueue *xPriorityQueue);                                                                                                                                                                                      
 
 #endif /* QUEUE_H */
 
