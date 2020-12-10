@@ -37,14 +37,21 @@ static TaskHandle_t TaskPrinter = NULL;
 const portTickType xPeriodLine1 = 100;
 const portTickType xPeriodLine2 = 200;
 const portTickType xPeriodLine3 = 300;
-const portTickType xPeriodPrinter = 100;
 
-
+xQueueHandle DispTaskLine;
 
 _Noreturn void vLine1(void *pvParameters)
 {
     portTickType xLastWakeTime;
+    char *str;
+    char counter=0;
+    str = pvPortMalloc(5 * sizeof(char));
+
     while (1) {
+        sprintf(str, "Line1");
+        printf("vLine1: %s\n", str);
+        xQueueSend(DispTaskLine, &str, 0);
+
         xLastWakeTime = xTaskGetTickCount();
         vTaskDelayUntil(&xLastWakeTime, xPeriodLine1);
     }
@@ -53,7 +60,15 @@ _Noreturn void vLine1(void *pvParameters)
 _Noreturn void vLine2(void *pvParameters)
 {
     portTickType xLastWakeTime;
+    char *str;
+    char counter=0;
+    str = pvPortMalloc(5 * sizeof(char));
+
     while (1) {
+        sprintf(str, "Line2");
+        printf("vLine2: %s\n", str);
+        xQueueSend(DispTaskLine, &str, 0);
+
         xLastWakeTime = xTaskGetTickCount();
         vTaskDelayUntil(&xLastWakeTime, xPeriodLine2);
     }
@@ -62,18 +77,28 @@ _Noreturn void vLine2(void *pvParameters)
 _Noreturn void vLine3(void *pvParameters)
 {
     portTickType xLastWakeTime;
+    char *str;
+    char counter=0;
+    str = pvPortMalloc(5 * sizeof(char));
+
     while (1) {
+        sprintf(str, "Line3");
+        printf("vLine3: %s\n", str);
+        xQueueSend(DispTaskLine, &str, 0);
+
         xLastWakeTime = xTaskGetTickCount();
-        vTaskDelayUntil(&xLastWakeTime, xPeriodLine2);
+        vTaskDelayUntil(&xLastWakeTime, xPeriodLine3);
     }
 }
 
 _Noreturn void vPrinter(void *pvParameters)
 {
-    portTickType xLastWakeTime;
+    char *xMessage;
+    DispTaskLine = xQueueCreate(6, 5 * sizeof(char *)) ;
+
     while (1) {
-        xLastWakeTime = xTaskGetTickCount();
-        vTaskDelayUntil(&xLastWakeTime, xPeriodPrinter);
+        xQueueReceive(DispTaskLine, &xMessage, portMAX_DELAY); 
+        printf("Printer: %s\n", xMessage);
     }
 }
 
@@ -85,7 +110,7 @@ int main(int argc, char *argv[])
                     TaskLine2_PRIORITY, &TaskLine2); 
     xTaskCreate(vLine3, "Line3", mainGENERIC_STACK_SIZE * 2, NULL,
                     TaskLine3_PRIORITY, &TaskLine3);
-    xTaskCreate(vPrinter, "Line3", mainGENERIC_STACK_SIZE * 2, NULL,
+    xTaskCreate(vPrinter, "Printer", mainGENERIC_STACK_SIZE * 2, NULL,
                     TaskPrinter_PRIORITY, &TaskPrinter); 
     vTaskStartScheduler();
 
