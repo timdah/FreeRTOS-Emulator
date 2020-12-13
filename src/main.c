@@ -44,6 +44,7 @@ void vTaskPrinter(void *pvParameters)
     BaseType_t ucCounter = 0U;
     BaseType_t xResult = pdFALSE;
     while (1) {
+        // ucCounter determines if xQueueReceiveLow, xQueueReceiveHigh or xQueuePeekHigh is used to get an element from the queue
         ucCounter = (ucCounter + 1) % 3;
         if (ucCounter == 0) {
             xResult = xQueueReceiveLow(printerQueue, pucBuffer, xPeriodPrinter);
