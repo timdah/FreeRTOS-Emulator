@@ -127,12 +127,12 @@ zero. */
  * rationale: http://www.freertos.org/Embedded-RTOS-Queues.html
  */
 typedef struct QueueDefinition {
-    int8_t *pcHead; /*< Points to the beginning of the queue storage area. */
-    int8_t *pcTail; /*< Points to the byte at the end of the queue storage area.  Once more byte is allocated than necessary to store the queue items, this is used as a marker. */
-    int8_t *pcWriteTo; /*< Points to the free next place in the storage area. */
+    int8_t *pcHead[configMAX_PRIORITIES]; /*< Points to the beginning of the queue storage area. */
+    int8_t *pcTail[configMAX_PRIORITIES]; /*< Points to the byte at the end of the queue storage area.  Once more byte is allocated than necessary to store the queue items, this is used as a marker. */
+    int8_t *pcWriteTo[configMAX_PRIORITIES]; /*< Points to the free next place in the storage area. */
 
     union { /* Use of a union is an exception to the coding standard to ensure two mutually exclusive structure members don't appear simultaneously (wasting RAM). */
-        int8_t *pcReadFrom; /*< Points to the last place that a queued item was read from when the structure is used as a queue. */
+        int8_t *pcReadFrom[configMAX_PRIORITIES]; /*< Points to the last place that a queued item was read from when the structure is used as a queue. */
         UBaseType_t
         uxRecursiveCallCount; /*< Maintains a count of the number of times a recursive mutex has been recursively 'taken' when the structure is used as a mutex. */
     } u;
@@ -142,6 +142,8 @@ typedef struct QueueDefinition {
 
     volatile UBaseType_t
     uxMessagesWaiting; /*< The number of items currently in the queue. */
+    volatile UBaseType_t
+    uxMessagesWaitingPerPriority[configMAX_PRIORITIES];
     UBaseType_t
     uxLength; /*< The length of the queue defined as the number of items it will hold, not the number of bytes. */
     UBaseType_t
@@ -237,7 +239,8 @@ prvCopyDataToQueue(Queue_t *const pxQueue, const void *pvItemToQueue,
  * Copies an item out of a queue.
  */
 static void prvCopyDataFromQueue(Queue_t *const pxQueue,
-                                 void *const pvBuffer) PRIVILEGED_FUNCTION;
+                                 void *const pvBuffer,
+                                 UBaseType_t xPriority) PRIVILEGED_FUNCTION;
 
 #if (configUSE_QUEUE_SETS == 1)
 /*
@@ -295,13 +298,16 @@ BaseType_t xQueueGenericReset(QueueHandle_t xQueue, BaseType_t xNewQueue)
 
     taskENTER_CRITICAL();
     {
-        pxQueue->pcTail = pxQueue->pcHead +
+        for (UBaseType_t i = 0; i < configMAX_PRIORITIES; i++) {
+            pxQueue->pcTail[i] = pxQueue->pcHead[i] +
                           (pxQueue->uxLength * pxQueue->uxItemSize);
-        pxQueue->uxMessagesWaiting = (UBaseType_t)0U;
-        pxQueue->pcWriteTo = pxQueue->pcHead;
-        pxQueue->u.pcReadFrom = pxQueue->pcHead +
+            pxQueue->uxMessagesWaitingPerPriority[i] = 0U;
+            pxQueue->pcWriteTo[i] = pxQueue->pcHead[i];
+            pxQueue->u.pcReadFrom[i] = pxQueue->pcHead[i] +
                                 ((pxQueue->uxLength - (UBaseType_t)1U) *
                                  pxQueue->uxItemSize);
+        }
+
         pxQueue->cRxLock = queueUNLOCKED;
         pxQueue->cTxLock = queueUNLOCKED;
 
@@ -418,7 +424,8 @@ QueueHandle_t xQueueGenericCreate(const UBaseType_t uxQueueLength,
             can be in the queue at any time. */
         xQueueSizeInBytes = (size_t)(
                                 uxQueueLength *
-                                uxItemSize); /*lint !e961 MISRA exception as the casts are only redundant for some ports. */
+                                uxItemSize *
+                                configMAX_PRIORITIES); /*lint !e961 MISRA exception as the casts are only redundant for some ports. */
     }
 
     pxNewQueue =
@@ -457,17 +464,20 @@ static void prvInitialiseNewQueue(const UBaseType_t uxQueueLength,
     /* Remove compiler warnings about unused parameters should
     configUSE_TRACE_FACILITY not be set to 1. */
     (void)ucQueueType;
+    UBaseType_t xPriority = uxTaskPriorityGet(xTaskGetCurrentTaskHandle());
 
     if (uxItemSize == (UBaseType_t)0) {
         /* No RAM was allocated for the queue storage area, but PC head cannot
         be set to NULL because NULL is used as a key to say the queue is used as
         a mutex.  Therefore just set pcHead to point to the queue as a benign
         value that is known to be within the memory map. */
-        pxNewQueue->pcHead = (int8_t *)pxNewQueue;
+        pxNewQueue->pcHead[xPriority] = (int8_t *)pxNewQueue;
     }
     else {
         /* Set the head to the start of the queue storage area. */
-        pxNewQueue->pcHead = (int8_t *)pucQueueStorage;
+        for (UBaseType_t i = 0; i < configMAX_PRIORITIES; i++) {
+            pxNewQueue->pcHead[i] = (int8_t *)pucQueueStorage + (uxItemSize * uxQueueLength * i);
+        }
     }
 
     /* Initialise the queue members as described where the queue type is
@@ -501,8 +511,10 @@ static void prvInitialiseMutex(Queue_t *pxNewQueue)
             correctly for a generic queue, but this function is creating a
             mutex.  Overwrite those members that need to be set differently -
             in particular the information required for priority inheritance. */
-        pxNewQueue->pxMutexHolder = NULL;
-        pxNewQueue->uxQueueType = queueQUEUE_IS_MUTEX;
+        for (UBaseType_t i = 0; i < configMAX_PRIORITIES; i++) {
+            pxNewQueue->pxMutexHolder[i] = NULL;
+            pxNewQueue->uxQueueType[i] = queueQUEUE_IS_MUTEX;
+        }
 
         /* In case this is a recursive mutex. */
         pxNewQueue->u.uxRecursiveCallCount = 0;
@@ -668,7 +680,7 @@ BaseType_t xQueueTakeMutexRecursive(QueueHandle_t xMutex,
     }
     else {
         xReturn = xQueueGenericReceive(pxMutex, NULL, xTicksToWait,
-                                       pdFALSE);
+                                       pdFALSE, pdTRUE);
 
         /* pdPASS will only be returned if the mutex was successfully
             obtained.  The calling task may have entered the Blocked state
@@ -758,6 +770,8 @@ BaseType_t xQueueGenericSend(QueueHandle_t xQueue,
     BaseType_t xEntryTimeSet = pdFALSE, xYieldRequired;
     TimeOut_t xTimeOut;
     Queue_t *const pxQueue = (Queue_t *)xQueue;
+
+    char *toQueue = (char *) pvItemToQueue;
 
     configASSERT(pxQueue);
     configASSERT(!((pvItemToQueue == NULL) &&
@@ -1127,7 +1141,7 @@ BaseType_t xQueueGiveFromISR(QueueHandle_t xQueue,
     there is a mutex holder, as priority inheritance makes no sense for an
     interrupts, only tasks. */
     configASSERT(!((pxQueue->uxQueueType == queueQUEUE_IS_MUTEX) &&
-                   (pxQueue->pxMutexHolder != NULL)));
+                   (pxQueue->pxMutexHolder[xPriority] != NULL)));
 
     /* RTOS ports that support interrupt nesting have the concept of a maximum
     system call (or maximum API call) interrupt priority.  Interrupts that are
@@ -1274,7 +1288,8 @@ BaseType_t xQueueGiveFromISR(QueueHandle_t xQueue,
 
 BaseType_t xQueueGenericReceive(QueueHandle_t xQueue, void *const pvBuffer,
                                 TickType_t xTicksToWait,
-                                const BaseType_t xJustPeeking)
+                                const BaseType_t xJustPeeking, 
+                                const BaseType_t xReceiveHigh)
 {
     BaseType_t xEntryTimeSet = pdFALSE;
     TimeOut_t xTimeOut;
@@ -1305,11 +1320,28 @@ BaseType_t xQueueGenericReceive(QueueHandle_t xQueue, void *const pvBuffer,
             /* Is there data in the queue now?  To be running the calling task
             must be the highest priority task wanting to access the queue. */
             if (uxMessagesWaiting > (UBaseType_t)0) {
+                UBaseType_t xPriority;
+                if (xReceiveHigh) {
+                    for (BaseType_t i = configMAX_PRIORITIES - 1; i >= 0; i--) {
+                        if (pxQueue->uxMessagesWaitingPerPriority[i] > 0) { /* true at least once since uxMessagesWaiting > 0 */
+                            xPriority = i;
+                            break;
+                        }
+                    }
+                } else { /* receive low */
+                    for (BaseType_t i = 0; i < configMAX_PRIORITIES; i++) {
+                        if (pxQueue->uxMessagesWaitingPerPriority[i] > 0) { /* true at least once since uxMessagesWaiting > 0 */
+                            xPriority = i;
+                            break;
+                        }
+                    }
+                }
+
                 /* Remember the read position in case the queue is only being
                 peeked. */
-                pcOriginalReadPosition = pxQueue->u.pcReadFrom;
+                pcOriginalReadPosition = pxQueue->u.pcReadFrom[xPriority];
 
-                prvCopyDataFromQueue(pxQueue, pvBuffer);
+                prvCopyDataFromQueue(pxQueue, pvBuffer, xPriority);
 
                 if (xJustPeeking == pdFALSE) {
                     traceQUEUE_RECEIVE(pxQueue);
@@ -1317,6 +1349,7 @@ BaseType_t xQueueGenericReceive(QueueHandle_t xQueue, void *const pvBuffer,
                     /* Actually removing data, not just peeking. */
                     pxQueue->uxMessagesWaiting =
                         uxMessagesWaiting - 1;
+                    pxQueue->uxMessagesWaitingPerPriority[xPriority] = pxQueue->uxMessagesWaitingPerPriority[xPriority] - 1;
 
 #if (configUSE_MUTEXES == 1)
                     {
@@ -1324,7 +1357,7 @@ BaseType_t xQueueGenericReceive(QueueHandle_t xQueue, void *const pvBuffer,
                             queueQUEUE_IS_MUTEX) {
                             /* Record the information required to implement
                             priority inheritance should it become necessary. */
-                            pxQueue->pxMutexHolder = (int8_t *)
+                            pxQueue->pxMutexHolder[xPriority] = (int8_t *)
                                                      pvTaskIncrementMutexHeldCount(); /*lint !e961 Cast is not redundant as TaskHandle_t is a typedef. */
                         }
                         else {
@@ -1354,7 +1387,7 @@ BaseType_t xQueueGenericReceive(QueueHandle_t xQueue, void *const pvBuffer,
 
                     /* The data is not being removed, so reset the read
                     pointer. */
-                    pxQueue->u.pcReadFrom =
+                    pxQueue->u.pcReadFrom[xPriority] =
                         pcOriginalReadPosition;
 
                     /* The data is being left in the queue, so see if there are
@@ -1502,7 +1535,14 @@ BaseType_t xQueueReceiveFromISR(QueueHandle_t xQueue, void *const pvBuffer,
 
             traceQUEUE_RECEIVE_FROM_ISR(pxQueue);
 
-            prvCopyDataFromQueue(pxQueue, pvBuffer);
+            UBaseType_t xPriority;
+            for (BaseType_t i = configMAX_PRIORITIES - 1; i >= 0; i--) {
+                if (pxQueue->uxMessagesWaitingPerPriority[i] > 0) { /* true at least once since uxMessagesWaiting > 0 */
+                    xPriority = i;
+                }
+            }
+
+            prvCopyDataFromQueue(pxQueue, pvBuffer, xPriority);
             pxQueue->uxMessagesWaiting = uxMessagesWaiting - 1;
 
             /* If the queue is locked the event list will not be modified.
@@ -1560,6 +1600,7 @@ BaseType_t xQueuePeekFromISR(QueueHandle_t xQueue, void *const pvBuffer)
     UBaseType_t uxSavedInterruptStatus;
     int8_t *pcOriginalReadPosition;
     Queue_t *const pxQueue = (Queue_t *)xQueue;
+    UBaseType_t xPriority = uxTaskPriorityGet(xTaskGetCurrentTaskHandle());
 
     configASSERT(pxQueue);
     configASSERT(!((pvBuffer == NULL) &&
@@ -1590,9 +1631,16 @@ BaseType_t xQueuePeekFromISR(QueueHandle_t xQueue, void *const pvBuffer)
 
             /* Remember the read position so it can be reset as nothing is
             actually being removed from the queue. */
-            pcOriginalReadPosition = pxQueue->u.pcReadFrom;
-            prvCopyDataFromQueue(pxQueue, pvBuffer);
-            pxQueue->u.pcReadFrom = pcOriginalReadPosition;
+            pcOriginalReadPosition = pxQueue->u.pcReadFrom[xPriority];
+            UBaseType_t xPriority;
+            for (BaseType_t i = configMAX_PRIORITIES - 1; i >= 0; i--) {
+                if (pxQueue->uxMessagesWaitingPerPriority[i] > 0) { /* true at least once since uxMessagesWaiting > 0 */
+                    xPriority = i;
+                }
+            }
+
+            prvCopyDataFromQueue(pxQueue, pvBuffer, xPriority);
+            pxQueue->u.pcReadFrom[xPriority] = pcOriginalReadPosition;
 
             xReturn = pdPASS;
         }
@@ -1731,8 +1779,11 @@ static BaseType_t prvCopyDataToQueue(Queue_t *const pxQueue,
 {
     BaseType_t xReturn = pdFALSE;
     UBaseType_t uxMessagesWaiting;
+    UBaseType_t xPriority = uxTaskPriorityGet(xTaskGetCurrentTaskHandle());
 
     /* This function is called from a critical section. */
+
+    char *toQueue = (char *) pvItemToQueue;
 
     uxMessagesWaiting = pxQueue->uxMessagesWaiting;
 
@@ -1743,8 +1794,8 @@ static BaseType_t prvCopyDataToQueue(Queue_t *const pxQueue,
             {
                 /* The mutex is no longer being held. */
                 xReturn = xTaskPriorityDisinherit(
-                    (void *)pxQueue->pxMutexHolder);
-                pxQueue->pxMutexHolder = NULL;
+                    (void *)pxQueue->pxMutexHolder[xPriority]);
+                pxQueue->pxMutexHolder[xPriority] = NULL;
             }
             else
             {
@@ -1755,13 +1806,13 @@ static BaseType_t prvCopyDataToQueue(Queue_t *const pxQueue,
     }
     else if (xPosition == queueSEND_TO_BACK) {
         (void)memcpy(
-            (void *)pxQueue->pcWriteTo, pvItemToQueue,
+            (void *)pxQueue->pcWriteTo[xPriority], pvItemToQueue,
             (size_t)pxQueue
             ->uxItemSize); /*lint !e961 !e418 MISRA exception as the casts are only redundant for some ports, plus previous logic ensures a null pointer can only be passed to memcpy() if the copy size is 0. */
-        pxQueue->pcWriteTo += pxQueue->uxItemSize;
-        if (pxQueue->pcWriteTo >=
-            pxQueue->pcTail) { /*lint !e946 MISRA exception justified as comparison of pointers is the cleanest solution. */
-            pxQueue->pcWriteTo = pxQueue->pcHead;
+        pxQueue->pcWriteTo[xPriority] += pxQueue->uxItemSize;
+        if (pxQueue->pcWriteTo[xPriority] >=
+            pxQueue->pcTail[xPriority]) { /*lint !e946 MISRA exception justified as comparison of pointers is the cleanest solution. */
+            pxQueue->pcWriteTo[xPriority] = pxQueue->pcHead[xPriority];
         }
         else {
             mtCOVERAGE_TEST_MARKER();
@@ -1769,14 +1820,14 @@ static BaseType_t prvCopyDataToQueue(Queue_t *const pxQueue,
     }
     else {
         (void)memcpy(
-            (void *)pxQueue->u.pcReadFrom, pvItemToQueue,
+            (void *)pxQueue->u.pcReadFrom[xPriority], pvItemToQueue,
             (size_t)pxQueue
             ->uxItemSize); /*lint !e961 MISRA exception as the casts are only redundant for some ports. */
-        pxQueue->u.pcReadFrom -= pxQueue->uxItemSize;
-        if (pxQueue->u.pcReadFrom <
+        pxQueue->u.pcReadFrom[xPriority] -= pxQueue->uxItemSize;
+        if (pxQueue->u.pcReadFrom[xPriority] <
             pxQueue->pcHead) { /*lint !e946 MISRA exception justified as comparison of pointers is the cleanest solution. */
-            pxQueue->u.pcReadFrom =
-                (pxQueue->pcTail - pxQueue->uxItemSize);
+            pxQueue->u.pcReadFrom[xPriority] =
+                (pxQueue->pcTail[xPriority] - pxQueue->uxItemSize);
         }
         else {
             mtCOVERAGE_TEST_MARKER();
@@ -1800,24 +1851,25 @@ static BaseType_t prvCopyDataToQueue(Queue_t *const pxQueue,
     }
 
     pxQueue->uxMessagesWaiting = uxMessagesWaiting + 1;
+    pxQueue->uxMessagesWaitingPerPriority[xPriority] = pxQueue->uxMessagesWaitingPerPriority[xPriority] + 1;
 
     return xReturn;
 }
 /*-----------------------------------------------------------*/
 
-static void prvCopyDataFromQueue(Queue_t *const pxQueue, void *const pvBuffer)
+static void prvCopyDataFromQueue(Queue_t *const pxQueue, void *const pvBuffer, UBaseType_t xPriority)
 {
     if (pxQueue->uxItemSize != (UBaseType_t)0) {
-        pxQueue->u.pcReadFrom += pxQueue->uxItemSize;
-        if (pxQueue->u.pcReadFrom >=
-            pxQueue->pcTail) { /*lint !e946 MISRA exception justified as use of the relational operator is the cleanest solutions. */
-            pxQueue->u.pcReadFrom = pxQueue->pcHead;
+        pxQueue->u.pcReadFrom[xPriority] += pxQueue->uxItemSize;
+        if (pxQueue->u.pcReadFrom[xPriority] >=
+            pxQueue->pcTail[xPriority]) { /*lint !e946 MISRA exception justified as use of the relational operator is the cleanest solutions. */
+            pxQueue->u.pcReadFrom[xPriority] = pxQueue->pcHead[xPriority];
         }
         else {
             mtCOVERAGE_TEST_MARKER();
         }
         (void)memcpy(
-            (void *)pvBuffer, (void *)pxQueue->u.pcReadFrom,
+            (void *)pvBuffer, (void *)pxQueue->u.pcReadFrom[xPriority],
             (size_t)pxQueue
             ->uxItemSize); /*lint !e961 !e418 MISRA exception as the casts are only redundant for some ports.  Also previous logic ensures a null pointer can only be passed to memcpy() when the count is 0. */
     }
@@ -2094,6 +2146,7 @@ BaseType_t xQueueCRReceive(QueueHandle_t xQueue, void *pvBuffer,
 {
     BaseType_t xReturn;
     Queue_t *const pxQueue = (Queue_t *)xQueue;
+    UBaseType_t xPriority = uxTaskPriorityGet(xTaskGetCurrentTaskHandle());
 
     /* If the queue is already empty we may have to block.  A critical section
         is required to prevent an interrupt adding something to the queue
@@ -2127,16 +2180,16 @@ BaseType_t xQueueCRReceive(QueueHandle_t xQueue, void *pvBuffer,
     {
         if (pxQueue->uxMessagesWaiting > (UBaseType_t)0) {
             /* Data is available from the queue. */
-            pxQueue->u.pcReadFrom += pxQueue->uxItemSize;
-            if (pxQueue->u.pcReadFrom >= pxQueue->pcTail) {
-                pxQueue->u.pcReadFrom = pxQueue->pcHead;
+            pxQueue->u.pcReadFrom[xPriority] += pxQueue->uxItemSize;
+            if (pxQueue->u.pcReadFrom[xPriority] >= pxQueue->pcTail) {
+                pxQueue->u.pcReadFrom[xPriority] = pxQueue->pcHead;
             }
             else {
                 mtCOVERAGE_TEST_MARKER();
             }
             --(pxQueue->uxMessagesWaiting);
             (void)memcpy((void *)pvBuffer,
-                         (void *)pxQueue->u.pcReadFrom,
+                         (void *)pxQueue->u.pcReadFrom[xPriority],
                          (unsigned)pxQueue->uxItemSize);
 
             xReturn = pdPASS;
@@ -2225,20 +2278,21 @@ BaseType_t xQueueCRReceiveFromISR(QueueHandle_t xQueue, void *pvBuffer,
 {
     BaseType_t xReturn;
     Queue_t *const pxQueue = (Queue_t *)xQueue;
+    UBaseType_t xPriority = uxTaskPriorityGet(xTaskGetCurrentTaskHandle());
 
     /* We cannot block from an ISR, so check there is data available. If
         not then just leave without doing anything. */
     if (pxQueue->uxMessagesWaiting > (UBaseType_t)0) {
         /* Copy the data from the queue. */
-        pxQueue->u.pcReadFrom += pxQueue->uxItemSize;
-        if (pxQueue->u.pcReadFrom >= pxQueue->pcTail) {
-            pxQueue->u.pcReadFrom = pxQueue->pcHead;
+        pxQueue->u.pcReadFrom[xPriority] += pxQueue->uxItemSize;
+        if (pxQueue->u.pcReadFrom[xPriority] >= pxQueue->pcTail) {
+            pxQueue->u.pcReadFrom[xPriority] = pxQueue->pcHead;
         }
         else {
             mtCOVERAGE_TEST_MARKER();
         }
         --(pxQueue->uxMessagesWaiting);
-        (void)memcpy((void *)pvBuffer, (void *)pxQueue->u.pcReadFrom,
+        (void)memcpy((void *)pvBuffer, (void *)pxQueue->u.pcReadFrom[xPriority],
                      (unsigned)pxQueue->uxItemSize);
 
         if ((*pxCoRoutineWoken) == pdFALSE) {

@@ -328,7 +328,7 @@ typedef QueueHandle_t SemaphoreHandle_t;
  * \defgroup xSemaphoreTake xSemaphoreTake
  * \ingroup Semaphores
  */
-#define xSemaphoreTake( xSemaphore, xBlockTime )        xQueueGenericReceive( ( QueueHandle_t ) ( xSemaphore ), NULL, ( xBlockTime ), pdFALSE )
+#define xSemaphoreTake( xSemaphore, xBlockTime )        xQueueGenericReceive( ( QueueHandle_t ) ( xSemaphore ), NULL, ( xBlockTime ), pdFALSE, pdTRUE )
 
 /**
  * semphr. h

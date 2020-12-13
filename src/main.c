@@ -20,131 +20,111 @@
 
 /* #include "AsyncIO.h" */
 
+#define mainGENERIC_PRIORITY (tskIDLE_PRIORITY)
 #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
-#define mainTaskDisplay_PRIORITY (2)
-#define mainTaskInput_PRIORITY (1)
-#define mainTaskTimer_PRIORITY (3)
+#define mainTask1_PRIORITY (2)
+#define mainTask2_PRIORITY (3)
+#define mainTask3_PRIORITY (4)
+#define printer_PRIORITY (1)
 
-static TaskHandle_t TaskDisplay = NULL;
-static TaskHandle_t TaskInput = NULL;
-static TaskHandle_t TaskTimer = NULL;
-//const portTickType xPeriodDisplay = 10000;
-//const portTickType xPeriodInput = 5000;
-const portTickType xPeriodTimer = 10;
+static TaskHandle_t ProductionLine1 = NULL;
+static TaskHandle_t ProductionLine2 = NULL;
+static TaskHandle_t ProductionLine3 = NULL;
+static TaskHandle_t Printer = NULL;
+const portTickType xPeriod1 = 1000 / portTICK_RATE_MS;
+const portTickType xPeriod2 = 2000 / portTICK_RATE_MS;
+const portTickType xPeriod3 = 3000 / portTICK_RATE_MS;
+const portTickType xPeriodPrinter = 500 / portTICK_RATE_MS;
 
-typedef enum {
-	StopWatchStop, 
-	StopWatchRun, 
-	StopWatchClear, 
-} StopWatchState;
+static xQueueHandle printerQueue;
 
-StopWatchState xCurState = StopWatchClear;
-
-uint32_t uiTimerCounter = 0;
-uint32_t uiTimerCounterBck = 0;
-
-/**
- * This task updates the output depending on the state of the Stop-Watch. 
- * It does not require exact timing. It must not update any data variables.
- */
-void vTaskBodyDisplay(void *pvParameter)
+void vTaskPrinter(void *pvParameters)
 {
-	while(1) {
-		if (xCurState == StopWatchStop) {
-			uint8_t ucMS = uiTimerCounter % 100;
-			uint8_t ucS = uiTimerCounter / 100 % 60;
-			uint8_t ucM = uiTimerCounter / 100 /60;
-			printf("Timer stands at %02d:%02d:%02d (mm:ss:ff).\nPress 'ENTER' to clear the timer: ", ucM, ucS, ucMS);
-		} else if(xCurState == StopWatchRun) {
-			uint8_t ucMS = uiTimerCounter % 100;
-			uint8_t ucS = uiTimerCounter / 100 % 60;
-			uint8_t ucM = uiTimerCounter / 100 /60;
-			printf("%02d:%02d:%02d\n", ucM, ucS, ucMS);
-		} else { // xCurState == StopWatchClear
-			printf("Press 'ENTER' to start and again to stop the timer: ");
-		}
+    uint8_t pucBuffer[10];
+    BaseType_t ucCounter = 0U;
+    BaseType_t xResult = pdFALSE;
+    while (1) {
+        ucCounter = (ucCounter + 1) % 3;
+        if (ucCounter == 0) {
+            xResult = xQueueReceiveLow(printerQueue, pucBuffer, xPeriodPrinter);
+        } else if (ucCounter == 1) {
+            xResult = xQueueReceiveHigh(printerQueue, pucBuffer, xPeriodPrinter);
+        } else {
+            xResult = xQueuePeekHigh(printerQueue, pucBuffer, xPeriodPrinter);
+        }
 
-		vTaskSuspend(TaskDisplay);
-	}
-
-	vTaskDelete(NULL);
+        if (xResult == pdTRUE) {
+            printf(">> printer: %s ", pucBuffer);
+            if (ucCounter == 0) {
+                printf("LOW\n");
+            } else if (ucCounter == 1) {
+                printf("HIGH\n");
+            } else {
+                printf("PEEK HIGH\n");
+            }
+        } else {
+            printf("---------------\n");
+        }
+    }
 }
 
-void vTaskBodyInput(void *pvParameter)
+void vTaskProductionLine1(void *pvParameters)
 {
-	char pcInput[256];
+    portTickType xLastWakeTime;
 
-	while(1) {
-		char *pcRes = fgets(pcInput, 256, stdin);
-		if (pcRes != NULL) {
-			if (xCurState == StopWatchClear) {
-				xCurState = StopWatchRun;
-				vTaskResume(TaskTimer);
-			} else if (xCurState == StopWatchRun) {
-				xCurState = StopWatchStop;
-				vTaskResume(TaskDisplay);
-			} else { // xCurState == StopWatchStop
-				xCurState = StopWatchClear;
-				vTaskResume(TaskDisplay);
-			}
-		}
-	}
+    while (1) {
+        xLastWakeTime = xTaskGetTickCount();
 
-	vTaskDelete(NULL);
+        printf("Task 1\n");
+
+        xQueueSendToBack(printerQueue, "Task 1", xPeriod1);
+        vTaskDelayUntil(&xLastWakeTime, xPeriod1);
+    }
 }
 
-void vTaskBodyTimer(void *pvParameter)
+void vTaskProductionLine2(void *pvParameters)
 {
-	portTickType xLastWakeTime;
+    portTickType xLastWakeTime;
+    while (1) {
+        xLastWakeTime = xTaskGetTickCount();
 
-	while(1) {
-		xLastWakeTime = xTaskGetTickCount();
+        printf("Task 2\n");
 
-		if (xCurState != StopWatchRun) {
-			uiTimerCounterBck = uiTimerCounter;
-			uiTimerCounter = 0;
-			vTaskSuspend(TaskTimer);
-		}
+        xQueueSendToBack(printerQueue, "Task 2", xPeriod2);
+        vTaskDelayUntil(&xLastWakeTime, xPeriod2);
+    }
+}
 
-		uiTimerCounter++;
+void vTaskProductionLine3(void *pvParameters)
+{
+    portTickType xLastWakeTime;
+    while (1) {
+        xLastWakeTime = xTaskGetTickCount();
 
-		vTaskResume(TaskDisplay);
-		vTaskDelayUntil(&xLastWakeTime, xPeriodTimer);
-	}
+        printf("Task 3\n");
 
-	vTaskDelete(NULL);
+        xQueueSendToBack(printerQueue, "Task 3", xPeriod3);
+        vTaskDelayUntil(&xLastWakeTime, xPeriod3);
+    }
 }
 
 int main(int argc, char *argv[])
 {
-	xTaskCreate(
-		vTaskBodyDisplay, 
-		"Display Task", 
-		mainGENERIC_STACK_SIZE * 2, 
-		NULL, 
-		mainTaskDisplay_PRIORITY, 
-		&TaskDisplay
-	);
-	
-	xTaskCreate(
-		vTaskBodyInput, 
-		"Input Task", 
-		mainGENERIC_STACK_SIZE * 2, 
-		NULL, 
-		mainTaskInput_PRIORITY, 
-		&TaskInput
-	);
+    xTaskCreate(vTaskProductionLine1, "Task1", mainGENERIC_STACK_SIZE * 2, NULL,
+                    mainTask1_PRIORITY, &ProductionLine1);
+    xTaskCreate(vTaskProductionLine2, "Task2", mainGENERIC_STACK_SIZE * 2, NULL,
+                    mainTask2_PRIORITY, &ProductionLine2);
+    xTaskCreate(vTaskProductionLine3, "Task3", mainGENERIC_STACK_SIZE * 2, NULL,
+                    mainTask3_PRIORITY, &ProductionLine3);
+    xTaskCreate(vTaskPrinter, "Printer", mainGENERIC_STACK_SIZE * 2, NULL,
+                    printer_PRIORITY, &Printer);
 
-	xTaskCreate(
-		vTaskBodyTimer, 
-		"Timer Task", 
-		mainGENERIC_STACK_SIZE * 2, 
-		NULL, 
-		mainTaskTimer_PRIORITY, 
-		&TaskTimer
-	);
+    printerQueue = xQueueCreate(10, 10);
+    if (printerQueue == NULL) {
+        //error: handle it
+    }
 
-	vTaskStartScheduler();
+    vTaskStartScheduler();
 
     return EXIT_SUCCESS;
 }

@@ -272,6 +272,8 @@ typedef void *QueueSetMemberHandle_t;
 #define xQueueCreateStatic( uxQueueLength, uxItemSize, pucQueueStorage, pxQueueBuffer ) xQueueGenericCreateStatic( ( uxQueueLength ), ( uxItemSize ), ( pucQueueStorage ), ( pxQueueBuffer ), ( queueQUEUE_TYPE_BASE ) )
 #endif /* configSUPPORT_STATIC_ALLOCATION */
 
+#include "task.h"
+
 /**
  * queue. h
  * <pre>
@@ -785,7 +787,7 @@ BaseType_t xQueueGenericSend(QueueHandle_t xQueue, const void *const pvItemToQue
  * \defgroup xQueueReceive xQueueReceive
  * \ingroup QueueManagement
  */
-#define xQueuePeek( xQueue, pvBuffer, xTicksToWait ) xQueueGenericReceive( ( xQueue ), ( pvBuffer ), ( xTicksToWait ), pdTRUE )
+#define xQueuePeekHigh( xQueue, pvBuffer, xTicksToWait ) xQueueGenericReceive( ( xQueue ), ( pvBuffer ), ( xTicksToWait ), pdTRUE, pdTRUE )
 
 /**
  * queue. h
@@ -911,8 +913,9 @@ BaseType_t xQueuePeekFromISR(QueueHandle_t xQueue, void *const pvBuffer) PRIVILE
  * \defgroup xQueueReceive xQueueReceive
  * \ingroup QueueManagement
  */
-#define xQueueReceive( xQueue, pvBuffer, xTicksToWait ) xQueueGenericReceive( ( xQueue ), ( pvBuffer ), ( xTicksToWait ), pdFALSE )
-
+#define xQueueReceive( xQueue, pvBuffer, xTicksToWait ) xQueueGenericReceive( ( xQueue ), ( pvBuffer ), ( xTicksToWait ), pdFALSE, pdTRUE )
+#define xQueueReceiveHigh( xQueue, pvBuffer, xTicksToWait ) xQueueGenericReceive( ( xQueue ), ( pvBuffer ), ( xTicksToWait ), pdFALSE, pdTRUE )
+#define xQueueReceiveLow( xQueue, pvBuffer, xTicksToWait ) xQueueGenericReceive( ( xQueue ), ( pvBuffer ), ( xTicksToWait ), pdFALSE, pdFALSE )
 
 /**
  * queue. h
@@ -1010,7 +1013,7 @@ BaseType_t xQueuePeekFromISR(QueueHandle_t xQueue, void *const pvBuffer) PRIVILE
  * \defgroup xQueueReceive xQueueReceive
  * \ingroup QueueManagement
  */
-BaseType_t xQueueGenericReceive(QueueHandle_t xQueue, void *const pvBuffer, TickType_t xTicksToWait, const BaseType_t xJustPeek) PRIVILEGED_FUNCTION;
+BaseType_t xQueueGenericReceive(QueueHandle_t xQueue, void *const pvBuffer, TickType_t xTicksToWait, const BaseType_t xJustPeek, const BaseType_t xReceiveHigh) PRIVILEGED_FUNCTION;
 
 /**
  * queue. h
