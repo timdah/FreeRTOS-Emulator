@@ -31,10 +31,10 @@ static TaskHandle_t ProductionLine1 = NULL;
 static TaskHandle_t ProductionLine2 = NULL;
 static TaskHandle_t ProductionLine3 = NULL;
 static TaskHandle_t Printer = NULL;
-const portTickType xPeriod1 = 1000 / portTICK_RATE_MS;
-const portTickType xPeriod2 = 2000 / portTICK_RATE_MS;
-const portTickType xPeriod3 = 3000 / portTICK_RATE_MS;
-const portTickType xPeriodPrinter = 500 / portTICK_RATE_MS;
+const portTickType xPeriod1 = 100 / portTICK_RATE_MS;
+const portTickType xPeriod2 = 200 / portTICK_RATE_MS;
+const portTickType xPeriod3 = 300 / portTICK_RATE_MS;
+const portTickType xPeriodPrinter = 50 / portTICK_RATE_MS;
 
 static xQueueHandle printerQueue;
 
