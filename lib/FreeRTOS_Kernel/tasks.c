@@ -359,6 +359,8 @@ typedef struct tskTaskControlBlock {
     uint8_t ucDelayAborted;
 #endif
 
+    TickType_t xLifetime;
+
 } tskTCB;
 
 /* The old tskTCB name is maintained above then typedefed to the new TCB_t name
@@ -568,6 +570,7 @@ static void prvInitialiseNewTask(TaskFunction_t pxTaskCode,
                                  const uint32_t ulStackDepth,
                                  void *const pvParameters,
                                  UBaseType_t uxPriority,
+                                 TickType_t xLifetime, 
                                  TaskHandle_t *const pxCreatedTask,
                                  TCB_t *pxNewTCB,
                                  const MemoryRegion_t *const xRegions) PRIVILEGED_FUNCTION;   /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
@@ -673,6 +676,7 @@ BaseType_t xTaskCreate(TaskFunction_t pxTaskCode,
                        const uint16_t usStackDepth,
                        void *const pvParameters,
                        UBaseType_t uxPriority,
+                       TickType_t xLifetime, 
                        TaskHandle_t *const pxCreatedTask)   /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 {
     TCB_t *pxNewTCB;
@@ -756,6 +760,7 @@ static void prvInitialiseNewTask(TaskFunction_t pxTaskCode,
                                  const uint32_t ulStackDepth,
                                  void *const pvParameters,
                                  UBaseType_t uxPriority,
+                                 TickType_t xLifetime,
                                  TaskHandle_t *const pxCreatedTask,
                                  TCB_t *pxNewTCB,
                                  const MemoryRegion_t *const xRegions)   /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
@@ -837,6 +842,7 @@ static void prvInitialiseNewTask(TaskFunction_t pxTaskCode,
     }
 
     pxNewTCB->uxPriority = uxPriority;
+    pxNewTCB->xLifetime = xLifetime;
 #if ( configUSE_MUTEXES == 1 )
     {
         pxNewTCB->uxBasePriority = uxPriority;

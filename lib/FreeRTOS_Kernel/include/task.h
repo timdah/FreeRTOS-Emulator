@@ -355,6 +355,7 @@ BaseType_t xTaskCreate(TaskFunction_t pxTaskCode,
                        const uint16_t usStackDepth,
                        void *const pvParameters,
                        UBaseType_t uxPriority,
+                       TickType_t xLifetime, 
                        TaskHandle_t *const pxCreatedTask) PRIVILEGED_FUNCTION;   /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 #endif
 
