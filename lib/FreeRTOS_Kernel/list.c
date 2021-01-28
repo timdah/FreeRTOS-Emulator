@@ -186,10 +186,13 @@ void vListInsert(List_t *const pxList, ListItem_t *const pxNewListItem)
                before the scheduler has been started (are interrupts firing
                before vTaskStartScheduler() has been called?).
         **********************************************************************/
+    
 
+        // printf("sort: %u %x\n", xValueOfInsertion, pxList);
         for (pxIterator = (ListItem_t *) & (pxList->xListEnd); pxIterator->pxNext->xItemValue <= xValueOfInsertion; pxIterator = pxIterator->pxNext) {   /*lint !e826 !e740 The mini list structure is used as the list end to save RAM.  This is checked and valid. */
             /* There is nothing to do here, just iterating to the wanted
             insertion position. */
+            // printf("list sort: %u\n", pxIterator->pxNext->xItemValue);
         }
     }
 
@@ -203,6 +206,14 @@ void vListInsert(List_t *const pxList, ListItem_t *const pxNewListItem)
     pxNewListItem->pvContainer = (void *) pxList;
 
     (pxList->uxNumberOfItems)++;
+
+    // int i = 0;
+    // for (pxIterator = (ListItem_t *) & (pxList->xListEnd); i < pxList->uxNumberOfItems ; pxIterator = pxIterator->pxNext) {   /*lint !e826 !e740 The mini list structure is used as the list end to save RAM.  This is checked and valid. */
+    //     /* There is nothing to do here, just iterating to the wanted
+    //     insertion position. */
+    //     printf("list: %u\n", pxIterator->pxNext->xItemValue);
+    //     i++;
+    // }
 }
 /*-----------------------------------------------------------*/
 

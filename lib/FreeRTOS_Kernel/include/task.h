@@ -355,7 +355,10 @@ BaseType_t xTaskCreate(TaskFunction_t pxTaskCode,
                        const uint16_t usStackDepth,
                        void *const pvParameters,
                        UBaseType_t uxPriority,
-                       TaskHandle_t *const pxCreatedTask) PRIVILEGED_FUNCTION;   /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
+                       TaskHandle_t *const pxCreatedTask,
+                       TickType_t worstCaseExecutionTime,
+                       TickType_t period,
+                       TickType_t relativeDeadline) PRIVILEGED_FUNCTION;   /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 #endif
 
 /**

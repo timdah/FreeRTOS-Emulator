@@ -188,6 +188,48 @@ state task. */
         uxTopReadyPriority = uxTopPriority;                                                             \
     } /* taskSELECT_HIGHEST_PRIORITY_TASK */
 
+#define taskSELECT_EARLIEST_DEADLINE_TASK()                                                          \
+    {                                                                                                   \
+        UBaseType_t uxTopPriority = uxTopReadyPriority;                                                     \
+        \
+        /* Find the highest priority queue that contains ready tasks. */                                \
+        while( listLIST_IS_EMPTY( &( pxReadyTasksLists[ uxTopPriority ] ) ) )                           \
+        {                                                                                               \
+            configASSERT( uxTopPriority );                                                              \
+            --uxTopPriority;                                                                            \
+        }                                                                                               \
+        \
+        pxCurrentTCB = ((TCB_t *)listGET_OWNER_OF_HEAD_ENTRY(&pxReadyTasksLists[uxTopPriority]));       \
+        uxTopReadyPriority = uxTopPriority;                                                             \
+    } /* taskSELECT_EARLIEST_DEADLINE_TASK */
+
+#define DECREASE_ALL_DEADLINES(value)                                                                       \
+    {                                                                                                       \
+        TCB_t *pxTmpTCB;   \
+         printf("decrement:");                                                                               \
+        int i;                                                                                              \
+        for (i = 0; i < pxReadyTasksLists[1].uxNumberOfItems; ++i)                                          \
+        {                                                                                                   \
+            listGET_OWNER_OF_NEXT_ENTRY( pxTmpTCB, &( pxReadyTasksLists[1] ) );                             \
+            if (pxTmpTCB->xStateListItem.xItemValue != 0)                                                   \
+            {                                                                                               \
+                listSET_LIST_ITEM_VALUE(&(pxTmpTCB->xStateListItem), pxTmpTCB->xStateListItem.xItemValue - 1);  \
+            }\
+            else\
+            {                                                                                                   \
+                pxTmpTCB->deadlineMissDistance++;                                                               \
+                printf("Deadline miss distance: %s: %u\n", pxTmpTCB->pcTaskName, pxTmpTCB->deadlineMissDistance);                                                                                     \
+            }                                                                                                   \
+            printf(" %u", pxTmpTCB->xStateListItem.xItemValue);                                                \
+        }                                                                                                       \
+        printf("\n"); \
+    }
+
+// #define MISS_DEADLINES()
+//     {   \
+//         \
+//     }   \
+
 /*-----------------------------------------------------------*/
 
 /* Define away taskRESET_READY_PRIORITY() and portRESET_READY_PRIORITY() as
@@ -259,7 +301,7 @@ count overflows. */
 #define prvAddTaskToReadyList( pxTCB )                                                              \
     traceMOVED_TASK_TO_READY_STATE( pxTCB );                                                        \
     taskRECORD_READY_PRIORITY( ( pxTCB )->uxPriority );                                             \
-    vListInsertEnd( &( pxReadyTasksLists[ ( pxTCB )->uxPriority ] ), &( ( pxTCB )->xStateListItem ) ); \
+    vListInsert( &( pxReadyTasksLists[ ( pxTCB )->uxPriority ] ), &( ( pxTCB )->xStateListItem ) ); \
     tracePOST_MOVED_TASK_TO_READY_STATE( pxTCB )
 /*-----------------------------------------------------------*/
 
@@ -296,6 +338,10 @@ typedef struct tskTaskControlBlock {
 #if ( portUSING_MPU_WRAPPERS == 1 )
     xMPU_SETTINGS   xMPUSettings;       /*< The MPU settings are defined as part of the port layer.  THIS MUST BE THE SECOND MEMBER OF THE TCB STRUCT. */
 #endif
+
+    uint32_t deadlineMissDistance;     /*< Worst case execution time of the task in ticks. */
+    TickType_t period;     /*< Period of the task in ticks. */
+    TickType_t relativeDeadline;   /*< Relative deadline of the task in ticks. */
 
     ListItem_t          xStateListItem; /*< The list that the state list item of a task is reference from denotes the state of that task (Ready, Blocked, Suspended ). */
     ListItem_t          xEventListItem;     /*< Used to reference a task from an event list. */
@@ -570,6 +616,9 @@ static void prvInitialiseNewTask(TaskFunction_t pxTaskCode,
                                  UBaseType_t uxPriority,
                                  TaskHandle_t *const pxCreatedTask,
                                  TCB_t *pxNewTCB,
+                                 TickType_t worstCaseExecutionTime,
+                                 TickType_t period,
+                                 TickType_t relativeDeadline,
                                  const MemoryRegion_t *const xRegions) PRIVILEGED_FUNCTION;   /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 
 /*
@@ -673,7 +722,10 @@ BaseType_t xTaskCreate(TaskFunction_t pxTaskCode,
                        const uint16_t usStackDepth,
                        void *const pvParameters,
                        UBaseType_t uxPriority,
-                       TaskHandle_t *const pxCreatedTask)   /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
+                       TaskHandle_t *const pxCreatedTask,
+                       TickType_t worstCaseExecutionTime,
+                       TickType_t period,
+                       TickType_t relativeDeadline)   /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 {
     TCB_t *pxNewTCB;
     BaseType_t xReturn;
@@ -737,7 +789,7 @@ BaseType_t xTaskCreate(TaskFunction_t pxTaskCode,
         }
 #endif /* configSUPPORT_STATIC_ALLOCATION */
 
-        prvInitialiseNewTask(pxTaskCode, pcName, (uint32_t) usStackDepth, pvParameters, uxPriority, pxCreatedTask, pxNewTCB, NULL);
+        prvInitialiseNewTask(pxTaskCode, pcName, (uint32_t) usStackDepth, pvParameters, uxPriority, pxCreatedTask, pxNewTCB, worstCaseExecutionTime, period, relativeDeadline, NULL);
         prvAddNewTaskToReadyList(pxNewTCB);
         xReturn = pdPASS;
     }
@@ -758,6 +810,9 @@ static void prvInitialiseNewTask(TaskFunction_t pxTaskCode,
                                  UBaseType_t uxPriority,
                                  TaskHandle_t *const pxCreatedTask,
                                  TCB_t *pxNewTCB,
+                                 TickType_t worstCaseExecutionTime,
+                                 TickType_t period,
+                                 TickType_t relativeDeadline,
                                  const MemoryRegion_t *const xRegions)   /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 {
     StackType_t *pxTopOfStack;
@@ -823,6 +878,11 @@ static void prvInitialiseNewTask(TaskFunction_t pxTaskCode,
         }
     }
 
+    /* Fill real time task parameter */
+    pxNewTCB->period = period;
+    pxNewTCB->relativeDeadline = relativeDeadline;
+    pxNewTCB->deadlineMissDistance = 0;
+
     /* Ensure the name string is terminated in the case that the string length
     was greater or equal to configMAX_TASK_NAME_LEN. */
     pxNewTCB->pcTaskName[ configMAX_TASK_NAME_LEN - 1 ] = '\0';
@@ -852,7 +912,9 @@ static void prvInitialiseNewTask(TaskFunction_t pxTaskCode,
     listSET_LIST_ITEM_OWNER(&(pxNewTCB->xStateListItem), pxNewTCB);
 
     /* Event lists are always in priority order. */
-    listSET_LIST_ITEM_VALUE(&(pxNewTCB->xEventListItem), (TickType_t) configMAX_PRIORITIES - (TickType_t) uxPriority);         /*lint !e961 MISRA exception as the casts are only redundant for some ports. */
+    // listSET_LIST_ITEM_VALUE(&(pxNewTCB->xEventListItem), (TickType_t) configMAX_PRIORITIES - (TickType_t) uxPriority);         /*lint !e961 MISRA exception as the casts are only redundant for some ports. */
+    listSET_LIST_ITEM_VALUE(&(pxNewTCB->xEventListItem), relativeDeadline); 
+    listSET_LIST_ITEM_VALUE(&(pxNewTCB->xStateListItem), relativeDeadline); 
     listSET_LIST_ITEM_OWNER(&(pxNewTCB->xEventListItem), pxNewTCB);
 
 #if ( portCRITICAL_NESTING_IN_TCB == 1 )
@@ -964,7 +1026,7 @@ static void prvAddNewTaskToReadyList(TCB_t *pxNewTCB)
             current task if it is the highest priority task to be created
             so far. */
             if (xSchedulerRunning == pdFALSE) {
-                if (pxCurrentTCB->uxPriority <= pxNewTCB->uxPriority) {
+                if (pxCurrentTCB->relativeDeadline > pxNewTCB->relativeDeadline) {
                     pxCurrentTCB = pxNewTCB;
                 }
                 else {
@@ -986,6 +1048,7 @@ static void prvAddNewTaskToReadyList(TCB_t *pxNewTCB)
 #endif /* configUSE_TRACE_FACILITY */
         traceTASK_CREATE(pxNewTCB);
 
+        listSET_LIST_ITEM_VALUE(&(pxNewTCB->xEventListItem), pxNewTCB->relativeDeadline); 
         prvAddTaskToReadyList(pxNewTCB);
 
         portSETUP_TCB(pxNewTCB);
@@ -1095,6 +1158,8 @@ void vTaskDelete(TaskHandle_t xTaskToDelete)
 
 void vTaskDelayUntil(TickType_t *const pxPreviousWakeTime, const TickType_t xTimeIncrement)
 {
+    printf("\tTask Out: %s\n", pxCurrentTCB->pcTaskName);
+
     TickType_t xTimeToWake;
     BaseType_t xAlreadyYielded, xShouldDelay = pdFALSE;
 
@@ -1613,6 +1678,8 @@ void vTaskResume(TaskHandle_t xTaskToResume)
                 /* As we are in a critical section we can access the ready
                 lists even if the scheduler is suspended. */
                 (void) uxListRemove(&(pxTCB->xStateListItem));
+                listSET_LIST_ITEM_VALUE(&(pxTCB->xEventListItem), pxTCB->relativeDeadline);
+                listSET_LIST_ITEM_VALUE(&(pxTCB->xStateListItem), pxTCB->relativeDeadline); 
                 prvAddTaskToReadyList(pxTCB);
 
                 /* We may have just resumed a higher priority task. */
@@ -1686,6 +1753,7 @@ BaseType_t xTaskResumeFromISR(TaskHandle_t xTaskToResume)
                 }
 
                 (void) uxListRemove(&(pxTCB->xStateListItem));
+                listSET_LIST_ITEM_VALUE(&(pxTCB->xEventListItem), pxTCB->relativeDeadline); 
                 prvAddTaskToReadyList(pxTCB);
             }
             else {
@@ -1743,7 +1811,7 @@ void vTaskStartScheduler(void)
                               "IDLE", configMINIMAL_STACK_SIZE,
                               (void *) NULL,
                               (tskIDLE_PRIORITY | portPRIVILEGE_BIT),
-                              &xIdleTaskHandle);  /*lint !e961 MISRA exception, justified as it is not a redundant explicit cast to all supported compilers. */
+                              &xIdleTaskHandle, 0, 0, 0xFFFFFFFF);  /*lint !e961 MISRA exception, justified as it is not a redundant explicit cast to all supported compilers. */
     }
 #endif /* configSUPPORT_STATIC_ALLOCATION */
 
@@ -1910,6 +1978,8 @@ BaseType_t xTaskResumeAll(void)
                     pxTCB = (TCB_t *) listGET_OWNER_OF_HEAD_ENTRY((&xPendingReadyList));
                     (void) uxListRemove(&(pxTCB->xEventListItem));
                     (void) uxListRemove(&(pxTCB->xStateListItem));
+                    listSET_LIST_ITEM_VALUE(&(pxTCB->xEventListItem), pxTCB->relativeDeadline); 
+                    listSET_LIST_ITEM_VALUE(&(pxTCB->xStateListItem), pxTCB->relativeDeadline); 
                     prvAddTaskToReadyList(pxTCB);
 
                     /* If the moved task has a priority higher than the current
@@ -2337,6 +2407,9 @@ BaseType_t xTaskIncrementTick(void)
     TickType_t xItemValue;
     BaseType_t xSwitchRequired = pdFALSE;
 
+    DECREASE_ALL_DEADLINES(1);
+    printf("tick: %d\n", xTickCount);
+
     /* Called by the portable layer each time a tick interrupt occurs.
     Increments the tick then checks to see if the new tick value will cause any
     tasks to be unblocked. */
@@ -2407,6 +2480,8 @@ BaseType_t xTaskIncrementTick(void)
 
                     /* Place the unblocked task into the appropriate ready
                     list. */
+                    listSET_LIST_ITEM_VALUE(&(pxTCB->xEventListItem), pxTCB->relativeDeadline); 
+                    listSET_LIST_ITEM_VALUE(&(pxTCB->xStateListItem), pxTCB->relativeDeadline);
                     prvAddTaskToReadyList(pxTCB);
 
                     /* A task being unblocked cannot cause an immediate
@@ -2606,7 +2681,7 @@ void vTaskSwitchContext(void)
 
         /* Select a new task to run using either the generic C or port
         optimised asm code. */
-        taskSELECT_HIGHEST_PRIORITY_TASK();
+        taskSELECT_EARLIEST_DEADLINE_TASK();
         traceTASK_SWITCHED_IN();
 
 #if ( configUSE_NEWLIB_REENTRANT == 1 )
@@ -4090,6 +4165,7 @@ BaseType_t xTaskGenericNotify(TaskHandle_t xTaskToNotify, uint32_t ulValue, eNot
         notification then unblock it now. */
         if (ucOriginalNotifyState == taskWAITING_NOTIFICATION) {
             (void) uxListRemove(&(pxTCB->xStateListItem));
+            listSET_LIST_ITEM_VALUE(&(pxTCB->xStateListItem), pxTCB->relativeDeadline); 
             prvAddTaskToReadyList(pxTCB);
 
             /* The task should not have been on an event list. */
