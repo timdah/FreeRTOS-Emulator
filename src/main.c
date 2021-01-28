@@ -30,86 +30,29 @@ static TaskHandle_t TaskInput = NULL;
 static TaskHandle_t TaskTimer = NULL;
 //const portTickType xPeriodDisplay = 10000;
 //const portTickType xPeriodInput = 5000;
-const portTickType xPeriodTimer = 10;
+const portTickType xPeriod = 10;
 
-typedef enum {
-	StopWatchStop, 
-	StopWatchRun, 
-	StopWatchClear, 
-} StopWatchState;
-
-StopWatchState xCurState = StopWatchClear;
-
-uint32_t uiTimerCounter = 0;
-uint32_t uiTimerCounterBck = 0;
-
-/**
- * This task updates the output depending on the state of the Stop-Watch. 
- * It does not require exact timing. It must not update any data variables.
- */
-void vTaskBodyDisplay(void *pvParameter)
-{
-	while(1) {
-		if (xCurState == StopWatchStop) {
-			uint8_t ucMS = uiTimerCounter % 100;
-			uint8_t ucS = uiTimerCounter / 100 % 60;
-			uint8_t ucM = uiTimerCounter / 100 /60;
-			printf("Timer stands at %02d:%02d:%02d (mm:ss:ff).\nPress 'ENTER' to clear the timer: ", ucM, ucS, ucMS);
-		} else if(xCurState == StopWatchRun) {
-			uint8_t ucMS = uiTimerCounter % 100;
-			uint8_t ucS = uiTimerCounter / 100 % 60;
-			uint8_t ucM = uiTimerCounter / 100 /60;
-			printf("%02d:%02d:%02d\n", ucM, ucS, ucMS);
-		} else { // xCurState == StopWatchClear
-			printf("Press 'ENTER' to start and again to stop the timer: ");
-		}
-
-		vTaskSuspend(TaskDisplay);
-	}
-
-	vTaskDelete(NULL);
-}
-
-void vTaskBodyInput(void *pvParameter)
-{
-	char pcInput[256];
-
-	while(1) {
-		char *pcRes = fgets(pcInput, 256, stdin);
-		if (pcRes != NULL) {
-			if (xCurState == StopWatchClear) {
-				xCurState = StopWatchRun;
-				vTaskResume(TaskTimer);
-			} else if (xCurState == StopWatchRun) {
-				xCurState = StopWatchStop;
-				vTaskResume(TaskDisplay);
-			} else { // xCurState == StopWatchStop
-				xCurState = StopWatchClear;
-				vTaskResume(TaskDisplay);
-			}
-		}
-	}
-
-	vTaskDelete(NULL);
-}
-
-void vTaskBodyTimer(void *pvParameter)
+void vTaskBody(void *pvParameter)
 {
 	portTickType xLastWakeTime;
+	portTickType xCurrentTick;
+	portTickType xLastTick;
 
 	while(1) {
+		uint16_t uWorkload = 5;
 		xLastWakeTime = xTaskGetTickCount();
+		xLastTick = xLastWakeTime;
 
-		if (xCurState != StopWatchRun) {
-			uiTimerCounterBck = uiTimerCounter;
-			uiTimerCounter = 0;
-			vTaskSuspend(TaskTimer);
+		printf("Task 1\n");
+
+		while (uWorkload != 0) {
+			xCurrentTick = xTaskGetTickCount();
+			if (xLastTick < xCurrentTick) {
+				uWorkload--;
+			}
 		}
 
-		uiTimerCounter++;
-
-		vTaskResume(TaskDisplay);
-		vTaskDelayUntil(&xLastWakeTime, xPeriodTimer);
+		vTaskDelayUntil(&xLastWakeTime, xPeriod);
 	}
 
 	vTaskDelete(NULL);
@@ -118,30 +61,13 @@ void vTaskBodyTimer(void *pvParameter)
 int main(int argc, char *argv[])
 {
 	xTaskCreate(
-		vTaskBodyDisplay, 
-		"Display Task", 
+		vTaskBody, 
+		"Task 1", 
 		mainGENERIC_STACK_SIZE * 2, 
 		NULL, 
 		mainTaskDisplay_PRIORITY, 
+		500,
 		&TaskDisplay
-	);
-	
-	xTaskCreate(
-		vTaskBodyInput, 
-		"Input Task", 
-		mainGENERIC_STACK_SIZE * 2, 
-		NULL, 
-		mainTaskInput_PRIORITY, 
-		&TaskInput
-	);
-
-	xTaskCreate(
-		vTaskBodyTimer, 
-		"Timer Task", 
-		mainGENERIC_STACK_SIZE * 2, 
-		NULL, 
-		mainTaskTimer_PRIORITY, 
-		&TaskTimer
 	);
 
 	vTaskStartScheduler();
