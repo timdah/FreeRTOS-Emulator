@@ -20,6 +20,9 @@
 
 /* #include "AsyncIO.h" */
 
+#define TASK_SET_NO 1
+
+
 #define mainGENERIC_PRIORITY (tskIDLE_PRIORITY)
 #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
 #define mainTask1_PRIORITY (1)
@@ -28,10 +31,23 @@
 
 static TaskHandle_t Task1 = NULL;
 static TaskHandle_t Task2 = NULL;
+#if TASK_SET_NO == 2
 static TaskHandle_t Task3 = NULL;
+#endif
+
+const uint16_t xWorkload1 = 2;
 const portTickType xPeriod1 = 4;
-const portTickType xPeriod2 = 4;
-const portTickType xPeriod3 = 10000;
+const portTickType xDeadline1 = 4;
+
+const uint16_t xWorkload2 = 5;
+const portTickType xPeriod2 = 10;
+const portTickType xDeadline2 = 10;
+
+#if TASK_SET_NO == 2
+const uint16_t xWorkload3 = 1;
+const portTickType xPeriod3 = 4;
+const portTickType xDeadline3 = 4;
+#endif
 
 void vTaskBody1(void *pvParameters)
 {
@@ -40,11 +56,11 @@ void vTaskBody1(void *pvParameters)
     portTickType xLastTick;
 
     while(1) {
-        uint16_t uWorkload = 2;
+        uint16_t uWorkload = xWorkload1;
         xLastWakeTime = xTaskGetTickCount();
         xLastTick = xLastWakeTime;
 
-        printf("\tTask In: Task 1\n");
+        // printf("\tTask In: Task 1\n");
 
         while (uWorkload != 0) {
             xCurrentTick = xTaskGetTickCount();
@@ -65,11 +81,11 @@ void vTaskBody2(void *pvParameters)
     portTickType xLastTick;
 
     while(1) {
-        uint16_t uWorkload = 2;
+        uint16_t uWorkload = xWorkload2;
         xLastWakeTime = xTaskGetTickCount();
         xLastTick = xLastWakeTime;
 
-        printf("\tTask In: Task 2\n");
+        // printf("\tTask In: Task 2\n");
 
         while (uWorkload != 0) {
             xCurrentTick = xTaskGetTickCount();
@@ -83,29 +99,44 @@ void vTaskBody2(void *pvParameters)
     }
 }
 
+#if TASK_SET_NO == 2
 void vTaskBody3(void *pvParameters)
 {
     portTickType xLastWakeTime;
-    while (1) {
+    portTickType xCurrentTick;
+    portTickType xLastTick;
+
+    while(1) {
+        uint16_t uWorkload = xWorkload3;
         xLastWakeTime = xTaskGetTickCount();
-        // Basic sleep of 1000 milliseconds
-        /* vTaskDelay((TickType_t)1000); */
-        printf("Task 3\n");
-        /* tumFUtilPrintTaskStateList(); */
-        /* tumFUtilPrintTaskUtils(); */
+        xLastTick = xLastWakeTime;
+
+        printf("\tTask In: Task 3\n");
+
+        while (uWorkload != 0) {
+            xCurrentTick = xTaskGetTickCount();
+            if (xLastTick < xCurrentTick) {
+                xLastTick = xCurrentTick;
+                uWorkload--;
+            }
+        }
+
         vTaskDelayUntil(&xLastWakeTime, xPeriod3);
     }
 }
+#endif
 
 
 int main(int argc, char *argv[])
 {
     xTaskCreate(vTaskBody1, "Task1", mainGENERIC_STACK_SIZE * 2, NULL,
-                    mainTask1_PRIORITY, &Task1, 0, 0, 4); 
+                    mainTask1_PRIORITY, &Task1, xDeadline1);
     xTaskCreate(vTaskBody2, "Task2", mainGENERIC_STACK_SIZE * 2, NULL,
-                    mainTask2_PRIORITY, &Task2, 0, 0, 4); 
-    // xTaskCreate(vTaskBody3, "Task3", mainGENERIC_STACK_SIZE * 2, NULL,
-    //                 mainTask3_PRIORITY, &Task3, 2, 5, 5); 
+                    mainTask2_PRIORITY, &Task2, xDeadline2);
+#if TASK_SET_NO == 2
+    xTaskCreate(vTaskBody3, "Task3", mainGENERIC_STACK_SIZE * 2, NULL,
+                    mainTask3_PRIORITY, &Task3, xDeadline3);
+#endif
     vTaskStartScheduler();
 
     return EXIT_SUCCESS;
