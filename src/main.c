@@ -39,12 +39,12 @@ const uint16_t xWorkload1 = 2;
 const portTickType xPeriod1 = 4;
 const portTickType xDeadline1 = 4;
 
-const uint16_t xWorkload2 = 5;
-const portTickType xPeriod2 = 10;
-const portTickType xDeadline2 = 10;
+const uint16_t xWorkload2 = 2;
+const portTickType xPeriod2 = 4;
+const portTickType xDeadline2 = 4;
 
 #if TASK_SET_NO == 2
-const uint16_t xWorkload3 = 1;
+const uint16_t xWorkload3 = 3;
 const portTickType xPeriod3 = 4;
 const portTickType xDeadline3 = 4;
 #endif
@@ -111,7 +111,7 @@ void vTaskBody3(void *pvParameters)
         xLastWakeTime = xTaskGetTickCount();
         xLastTick = xLastWakeTime;
 
-        printf("\tTask In: Task 3\n");
+        // printf("\tTask In: Task 3\n");
 
         while (uWorkload != 0) {
             xCurrentTick = xTaskGetTickCount();
@@ -129,6 +129,8 @@ void vTaskBody3(void *pvParameters)
 
 int main(int argc, char *argv[])
 {
+    // portDISABLE_INTERRUPTS();
+
     xTaskCreate(vTaskBody1, "Task1", mainGENERIC_STACK_SIZE * 2, NULL,
                     mainTask1_PRIORITY, &Task1, xDeadline1);
     xTaskCreate(vTaskBody2, "Task2", mainGENERIC_STACK_SIZE * 2, NULL,
