@@ -80,6 +80,7 @@
 typedef struct Semaphore 
 {
     TaskHandle_t owner;
+    UBaseType_t originalOwnerPriority;
     QueueHandle_t semaphoreQueue;
 } Semaphore;
 
@@ -337,13 +338,20 @@ typedef Semaphore *SemaphoreHandle_t;
  * \defgroup xSemaphoreTake xSemaphoreTake
  * \ingroup Semaphores
  */
-#define xSemaphoreTake( xSemaphore, xBlockTime, xTask )                                                \
-    {                       \
-        if (xSemaphore->owner != NULL && uxTaskPriorityGet(xSemaphore->owner) > uxTaskPriorityGet(xTask))             \
-            vTaskPrioritySet(xTask, uxTaskPriorityGet(xSemaphore->owner));                                           \
-        xQueueGenericReceive( ( QueueHandle_t ) xSemaphore->semaphoreQueue, NULL, ( xBlockTime ), pdFALSE );          \
-        if (xSemaphore->owner == NULL)                                                                               \
-            xSemaphore->owner = xTask;                                                                               \
+#define xSemaphoreTake( xSemaphore, xBlockTime, xTask )                                                             \
+    {                                                                                                               \
+        printf("%u %u\n", uxTaskPriorityGet(xTask), uxTaskPriorityGet(xSemaphore->owner));                          \
+        if (xSemaphore->owner != NULL && uxTaskPriorityGet(xSemaphore->owner) < uxTaskPriorityGet(xTask))           \
+        {                                                                                                           \
+            vTaskPrioritySet(xSemaphore->owner, uxTaskPriorityGet(xTask));                                          \
+            printf("%u %u\n", uxTaskPriorityGet(xTask), uxTaskPriorityGet(xSemaphore->owner));                      \
+        }                                                                                                           \
+        xQueueGenericReceive( ( QueueHandle_t ) xSemaphore->semaphoreQueue, NULL, ( xBlockTime ), pdFALSE );        \
+        if (xSemaphore->owner == NULL)                                                                              \
+        {                                                                                                           \
+            xSemaphore->owner = xTask;                                                                              \
+            xSemaphore->originalOwnerPriority = uxTaskPriorityGet(xTask);                                           \
+        }                                                                                                           \
     }
 
 /**
@@ -502,7 +510,14 @@ typedef Semaphore *SemaphoreHandle_t;
  * \defgroup xSemaphoreGive xSemaphoreGive
  * \ingroup Semaphores
  */
-#define xSemaphoreGive( xSemaphore ) xQueueGenericSend( ( QueueHandle_t ) xSemaphore->semaphoreQueue, NULL, semGIVE_BLOCK_TIME, queueSEND_TO_BACK ); xSemaphore->owner = NULL                                                                                          
+#define xSemaphoreGive( xSemaphore )                                                                                    \
+    xQueueGenericSend( ( QueueHandle_t ) xSemaphore->semaphoreQueue, NULL, semGIVE_BLOCK_TIME, queueSEND_TO_BACK );     \
+    if (xSemaphore->owner != NULL)                                                                                      \
+    {                                                                                                                   \
+        vTaskPrioritySet(xSemaphore->owner, xSemaphore->originalOwnerPriority);                                         \
+        xSemaphore->originalOwnerPriority = 0;                                                                          \
+        xSemaphore->owner = NULL;                                                                                       \
+    }                                                                                                                   \
 
 /**
  * semphr. h
