@@ -75,8 +75,15 @@
 #endif
 
 #include "queue.h"
+#include "task.h"
 
-typedef QueueHandle_t SemaphoreHandle_t;
+typedef struct Semaphore 
+{
+    TaskHandle_t owner;
+    QueueHandle_t semaphoreQueue;
+} Semaphore;
+
+typedef Semaphore *SemaphoreHandle_t;
 
 #define semBINARY_SEMAPHORE_QUEUE_LENGTH    ( ( uint8_t ) 1U )
 #define semSEMAPHORE_QUEUE_ITEM_LENGTH      ( ( uint8_t ) 0U )
@@ -134,9 +141,11 @@ typedef QueueHandle_t SemaphoreHandle_t;
  */
 #if( configSUPPORT_DYNAMIC_ALLOCATION == 1 )
 #define vSemaphoreCreateBinary( xSemaphore )                                                                                            \
-    {                                                                                                                                   \
-        ( xSemaphore ) = xQueueGenericCreate( ( UBaseType_t ) 1, semSEMAPHORE_QUEUE_ITEM_LENGTH, queueQUEUE_TYPE_BINARY_SEMAPHORE );    \
-        if( ( xSemaphore ) != NULL )                                                                                                    \
+    {   \
+        xSemaphore = (Semaphore *) malloc(sizeof(Semaphore));                                \
+        xSemaphore->owner = NULL;                                                                                                             \
+        xSemaphore->semaphoreQueue = xQueueGenericCreate( ( UBaseType_t ) 1, semSEMAPHORE_QUEUE_ITEM_LENGTH, queueQUEUE_TYPE_BINARY_SEMAPHORE );    \
+        if( xSemaphore->semaphoreQueue != NULL )                                                                                                    \
         {                                                                                                                               \
             ( void ) xSemaphoreGive( ( xSemaphore ) );                                                                                  \
         }                                                                                                                               \
@@ -328,7 +337,14 @@ typedef QueueHandle_t SemaphoreHandle_t;
  * \defgroup xSemaphoreTake xSemaphoreTake
  * \ingroup Semaphores
  */
-#define xSemaphoreTake( xSemaphore, xBlockTime )        xQueueGenericReceive( ( QueueHandle_t ) ( xSemaphore ), NULL, ( xBlockTime ), pdFALSE )
+#define xSemaphoreTake( xSemaphore, xBlockTime, xTask )                                                \
+    {                       \
+        if (xSemaphore->owner != NULL && uxTaskPriorityGet(xSemaphore->owner) > uxTaskPriorityGet(xTask))             \
+            vTaskPrioritySet(xTask, uxTaskPriorityGet(xSemaphore->owner));                                           \
+        xQueueGenericReceive( ( QueueHandle_t ) xSemaphore->semaphoreQueue, NULL, ( xBlockTime ), pdFALSE );          \
+        if (xSemaphore->owner == NULL)                                                                               \
+            xSemaphore->owner = xTask;                                                                               \
+    }
 
 /**
  * semphr. h
@@ -486,7 +502,7 @@ typedef QueueHandle_t SemaphoreHandle_t;
  * \defgroup xSemaphoreGive xSemaphoreGive
  * \ingroup Semaphores
  */
-#define xSemaphoreGive( xSemaphore )        xQueueGenericSend( ( QueueHandle_t ) ( xSemaphore ), NULL, semGIVE_BLOCK_TIME, queueSEND_TO_BACK )
+#define xSemaphoreGive( xSemaphore ) xQueueGenericSend( ( QueueHandle_t ) xSemaphore->semaphoreQueue, NULL, semGIVE_BLOCK_TIME, queueSEND_TO_BACK ); xSemaphore->owner = NULL                                                                                          
 
 /**
  * semphr. h
