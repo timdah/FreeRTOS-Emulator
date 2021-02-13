@@ -220,7 +220,6 @@ state task. */
             else                                                                                                    \
             {                                                                                                       \
                 pxTmpTCB->deadlineMissDistance++;                                                                   \
-                printf("Deadline miss distance: %s: %u\n", pxTmpTCB->pcTaskName, pxTmpTCB->deadlineMissDistance);   \
             }                                                                                                       \
         }                                                                                                           \
     } /* DECREASE_ALL_DEADLINES */
@@ -2397,7 +2396,7 @@ BaseType_t xTaskIncrementTick(void)
     BaseType_t xSwitchRequired = pdFALSE;
 
     DECREASE_ALL_DEADLINES(1);
-    printf("tick: %d -> %s\n", xTickCount, pxCurrentTCB->pcTaskName);
+    printf("tick: %u -> %s\t\tdeadlineMissDistance for task: %u\n", xTickCount, pxCurrentTCB->pcTaskName, pxCurrentTCB->deadlineMissDistance);
 
     /* Called by the portable layer each time a tick interrupt occurs.
     Increments the tick then checks to see if the new tick value will cause any

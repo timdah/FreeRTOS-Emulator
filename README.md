@@ -1,3 +1,23 @@
+# Exercise Sheet "Scheduling" #
+
+
+### "Scheduling".1  Earliest Deadline First (EDF) Algorithm Implementation ###
+Changes to make FreeRTOS EDF compliant: 
+ - extension of the TCB by the variables *relativeDeadline*, which defines the constant relative deadline of a task in relation to its release time, and *deadlineMissDistance*, which keeps track of the number of ticks that have passed since the respective task missed its deadline
+ - changes to *pxReadyTasksLists[ ... ]*:
+      - *pxReadyTasksLists* only stores TCB lists for two priorities now. User tasks always obtain priority 1 and are ordered by ascending relative deadline. The *Idle Task* still has priority 0 and only gets scheduled when no other task are available, reusing the original idle time mechanism.
+ - changes to the *xTaskIncrementTick* function 
+      - whenever a delayed tasks gets released again it is removed from the *pxDelayedTaskList* and inserted into *pxReadyTasksLists* according to its priority and its relative deadline. That is, the TCBs *xStateListItem* is assigned the *relativeDeadline* variable mentioned earlier. 
+      - on every tick the macro *DECREASE_ALL_DEADLINES* decreases the relative deadline of all tasks stored in the list pointed to by *pxReadyTasksLists[ 1 ]* by one but no further than to zero. When a deadline reaches zero the TCB variable *deadlineMissDistance* is incremented. 
+ - changes to the *vTaskSwitchContext* function:
+      - the macro *taskSELECT_EARLIEST_DEADLINE_TASK* retrieves the new task that is eligible to run, which is the task with the earliest deadline. This task is stored as the first list item in *pxReadyTasksLists[1]*. When no such task exists, because *pxReadyTasksLists[1]* is empty, the Idle task gets selected. 
+      
+To test our EDF scheduler, we defined tasks that call *vTaskDelayUntil* after a given number of ticks. 
+
+***The different task sets can be defined with TASK_SET_NO in main.c. Set 1 is the task set with total utilization of 100% and 2 is the task set with total utilization of more than 100%.***
+
+The command line output shows the active task on every tick as well as the cumulative number of ticks by which a respective task missed its deadline. 
+
 # FreeRTOS Emulator
 
 <p>

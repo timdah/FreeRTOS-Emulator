@@ -39,9 +39,9 @@ const uint16_t xWorkload1 = 2;
 const portTickType xPeriod1 = 4;
 const portTickType xDeadline1 = 4;
 
-const uint16_t xWorkload2 = 2;
-const portTickType xPeriod2 = 4;
-const portTickType xDeadline2 = 4;
+const uint16_t xWorkload2 = 5;
+const portTickType xPeriod2 = 10;
+const portTickType xDeadline2 = 10;
 
 #if TASK_SET_NO == 2
 const uint16_t xWorkload3 = 3;
