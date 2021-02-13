@@ -49,6 +49,19 @@ const portTickType xPeriod3 = 4;
 const portTickType xDeadline3 = 4;
 #endif
 
+void vWorkTicks(uint16_t uWorkticks)
+{
+    portTickType xCurrentTick;
+    portTickType xLastTick = xTaskGetTickCount();
+    uint16_t uLoad = uWorkticks;
+    while (uLoad > 0)
+    {
+        xCurrentTick = xTaskGetTickCount();
+        uLoad -= (xCurrentTick - xLastTick);
+        xLastTick = xCurrentTick;
+    }
+}
+
 void vTaskBody1(void *pvParameters)
 {
     portTickType xLastWakeTime;
@@ -56,19 +69,9 @@ void vTaskBody1(void *pvParameters)
     portTickType xLastTick;
 
     while(1) {
-        uint16_t uWorkload = xWorkload1;
         xLastWakeTime = xTaskGetTickCount();
-        xLastTick = xLastWakeTime;
-
-        // printf("\tTask In: Task 1\n");
-
-        while (uWorkload != 0) {
-            xCurrentTick = xTaskGetTickCount();
-            if (xLastTick < xCurrentTick) {
-                xLastTick = xCurrentTick;
-                uWorkload--;
-            }
-        }
+        
+        vWorkTicks(xWorkload1);
 
         vTaskDelayUntil(&xLastWakeTime, xPeriod1);
     }
@@ -81,19 +84,9 @@ void vTaskBody2(void *pvParameters)
     portTickType xLastTick;
 
     while(1) {
-        uint16_t uWorkload = xWorkload2;
         xLastWakeTime = xTaskGetTickCount();
-        xLastTick = xLastWakeTime;
-
-        // printf("\tTask In: Task 2\n");
-
-        while (uWorkload != 0) {
-            xCurrentTick = xTaskGetTickCount();
-            if (xLastTick < xCurrentTick) {
-                xLastTick = xCurrentTick;
-                uWorkload--;
-            }
-        }
+        
+        vWorkTicks(xWorkload2);
 
         vTaskDelayUntil(&xLastWakeTime, xPeriod2);
     }
@@ -107,19 +100,9 @@ void vTaskBody3(void *pvParameters)
     portTickType xLastTick;
 
     while(1) {
-        uint16_t uWorkload = xWorkload3;
         xLastWakeTime = xTaskGetTickCount();
-        xLastTick = xLastWakeTime;
 
-        // printf("\tTask In: Task 3\n");
-
-        while (uWorkload != 0) {
-            xCurrentTick = xTaskGetTickCount();
-            if (xLastTick < xCurrentTick) {
-                xLastTick = xCurrentTick;
-                uWorkload--;
-            }
-        }
+        vWorkTicks(xWorkload3);
 
         vTaskDelayUntil(&xLastWakeTime, xPeriod3);
     }
